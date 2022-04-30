@@ -1,0 +1,6 @@
+node_modules
+errors.txt
+.terraform
+.terraform.lock.hcl
+.env
+package-lock.json

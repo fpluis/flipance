@@ -1,0 +1,30 @@
+[
+  {
+    "id": "bid",
+    "name": "Receive an offer"
+  },
+  {
+    "id": "placeBid",
+    "name": "Place a bid"
+  },
+  {
+    "id": "acceptOffer",
+    "name": "Accept Offer"
+  },
+  {
+    "id": "acceptAsk",
+    "name": "Buy now"
+  },
+  {
+    "id": "cancelOrder",
+    "name": "Cancel Listing"
+  },
+  {
+    "id": "createAuction",
+    "name": "Create an auction"
+  },
+  {
+    "id": "settleAuction",
+    "name": "Settle an auction"
+  }
+]
