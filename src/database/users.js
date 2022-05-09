@@ -31,29 +31,36 @@ const hydrateUserObject = ({
   allowedEvents,
 });
 
-const loadUser = async (userId) => {
-  console.log(`Loading user ${userId}`);
-  const result = await dynamodb
-    .getItem({
-      Key: {
-        id: { S: userId },
-      },
-      TableName: "FlipanceUsers",
-    })
-    .promise()
-    .catch((error) => {
-      console.error(error);
-      return { id: { S: userId }, walletAlertLimit: { N: "1" } };
-    });
-  console.log(`Dynamodb result: ${JSON.stringify(result)}`);
-  const { id, ...props } = hydrateUserObject(result.Item);
-  users[id] = props;
-  return props;
+// const loadUser = async (userId) => {
+//   console.log(`Loading user ${userId}`);
+//   const result = await dynamodb
+//     .getItem({
+//       Key: {
+//         id: { S: userId },
+//       },
+//       TableName: "FlipanceUsers",
+//     })
+//     .promise()
+//     .catch((error) => {
+//       console.error(error);
+//       return { id: { S: userId }, walletAlertLimit: { N: "1" } };
+//     });
+//   console.log(`Dynamodb result: ${JSON.stringify(result)}`);
+//   const { id, ...props } = hydrateUserObject(result.Item);
+//   users[id] = props;
+//   return props;
+// };
+
+const loadDiscordUser = async (discordId) => {
+  const { rows } = await pool.query(
+    `SELECT * FROM users WHERE discord_id = $1`,
+    [discordId]
+  );
 };
 
 export const getUserSettings = async (userId) => {
   const user = await (users[userId] == null
-    ? loadUser(userId)
+    ? loadDiscordUser(userId)
     : Promise.resolve(users[userId]));
   return {
     walletAlertLimit: user.walletAlertLimit,

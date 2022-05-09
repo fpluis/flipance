@@ -1,15 +1,6 @@
 import { readFileSync } from "fs";
-import { getUserAlerts, saveAlert, deleteAlert } from "../database/alerts.js";
 import { utils } from "ethers";
-import {
-  addAddress,
-  deleteAddress,
-  getUserSettings,
-  updateUserAllowedMarketplaces,
-  updateUserAllowedEvents,
-  updateMaxOfferFloorDifference,
-} from "../database/users.js";
-import { getUserNfts } from "../blockchain.js";
+import { getAddressNFTs } from "../blockchain/index.js";
 import { MessageActionRow, MessageSelectMenu } from "discord.js";
 
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
@@ -24,7 +15,7 @@ const isValidAddress = (address) => {
   }
 };
 
-const handleCollectionAlert = async ({ interaction }) => {
+const handleCollectionAlert = async ({ dbClient, interaction }) => {
   const { guildId: userId, channelId, memberPermissions } = interaction;
   if (!memberPermissions.has("ADMINISTRATOR")) {
     return interaction.reply({
@@ -34,7 +25,7 @@ const handleCollectionAlert = async ({ interaction }) => {
     });
   }
 
-  const currentAlerts = await getUserAlerts(userId);
+  const currentAlerts = await dbClient.getUserAlerts(userId);
   if (currentAlerts.length >= 1) {
     return interaction.reply({
       content:
@@ -51,7 +42,7 @@ const handleCollectionAlert = async ({ interaction }) => {
     });
   }
 
-  const result = await saveAlert({
+  const result = await dbClient.createAlert({
     userId,
     channelId,
     type: "collection",
@@ -72,7 +63,7 @@ const handleCollectionAlert = async ({ interaction }) => {
   }
 };
 
-const handleListAlerts = async ({ interaction }) => {
+const handleListAlerts = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
     guildId,
@@ -82,8 +73,8 @@ const handleListAlerts = async ({ interaction }) => {
     ephemeral: true,
   });
   const [currentAlerts, guildAlerts] = await Promise.all([
-    getUserAlerts(userId),
-    getUserAlerts(guildId),
+    dbClient.getUserAlerts(userId),
+    dbClient.getUserAlerts(guildId),
   ]);
   console.log(
     `Wallet ${userId} alerts: ${JSON.stringify(
@@ -121,6 +112,7 @@ const handleListAlerts = async ({ interaction }) => {
 };
 
 const handleWalletAlert = async ({
+  dbClient,
   discordClient,
   moralisClient,
   interaction,
@@ -128,8 +120,8 @@ const handleWalletAlert = async ({
   const {
     user: { id: userId },
   } = interaction;
-  const currentAlerts = await getUserAlerts(userId);
-  const { walletAlertLimit } = await getUserSettings(userId);
+  const currentAlerts = await dbClient.getUserAlerts(userId);
+  const { walletAlertLimit } = await dbClient.getUser(userId);
   if (currentAlerts.length >= walletAlertLimit) {
     return interaction.reply({
       content:
@@ -160,19 +152,27 @@ const handleWalletAlert = async ({
       replied = true;
     });
 
-  const result = await saveAlert({ userId, type: "wallet", address });
+  const result = await dbClient.createAlert({
+    userId,
+    type: "wallet",
+    address,
+  });
   switch (result) {
     case "success":
-      getUserNfts(moralisClient, [address])
+      getAddressNFTs(moralisClient, [address])
         .then((tokens) => {
           console.log(
             `Tokens for address ${address}: ${JSON.stringify(tokens)}`
           );
-          addAddress({ id: userId, addresses: [address], tokens });
+          dbClient.addUserAddress({ id: userId, addresses: [address], tokens });
         })
         .catch((error) => {
           console.log(`Error fetching NFTs for address ${address}`, error);
-          addAddress({ id: userId, addresses: [address], tokens: [] });
+          dbClient.addUserAddress({
+            id: userId,
+            addresses: [address],
+            tokens: [],
+          });
         });
 
       if (!replied) {
@@ -197,6 +197,7 @@ const handleWalletAlert = async ({
 };
 
 const handleDeleteWallet = async ({
+  dbClient,
   discordClient,
   moralisClient,
   interaction,
@@ -217,7 +218,7 @@ const handleDeleteWallet = async ({
     .send(`Notifications for "${address}" are now turned off.`)
     .catch(() => {});
 
-  const result = await deleteAlert({ userId, address });
+  const result = await dbClient.deleteAlert({ userId, address });
   switch (result) {
     case "no-alert":
       return interaction.reply({
@@ -226,9 +227,9 @@ const handleDeleteWallet = async ({
       });
     case "success":
     default:
-      getUserNfts(moralisClient, [address]).then((tokens) => {
+      getAddressNFTs(moralisClient, [address]).then((tokens) => {
         console.log(`Tokens for address ${address}: ${JSON.stringify(tokens)}`);
-        deleteAddress({ id: userId, address, tokens });
+        dbClient.deleteUserAddress({ id: userId, address, tokens });
       });
       return interaction.reply({
         content: `Alert successfully removed for address ${address}`,
@@ -237,7 +238,7 @@ const handleDeleteWallet = async ({
   }
 };
 
-const handleDeleteCollection = async ({ interaction }) => {
+const handleDeleteCollection = async ({ dbClient, interaction }) => {
   const { guildId: userId, memberPermissions } = interaction;
   if (!memberPermissions.has("ADMINISTRATOR")) {
     return interaction.reply({
@@ -254,7 +255,7 @@ const handleDeleteCollection = async ({ interaction }) => {
     });
   }
 
-  const result = await deleteAlert({ userId, address });
+  const result = await dbClient.deleteAlert({ userId, address });
   switch (result) {
     case "no-alert":
       return interaction.reply({
@@ -284,7 +285,7 @@ const describeSettings = ({
     .map(({ name }) => name)
     .join(", ")}`;
 
-const handleSettings = async ({ interaction }) => {
+const handleSettings = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
   } = interaction;
@@ -293,14 +294,14 @@ const handleSettings = async ({ interaction }) => {
     content: "Fetching your settings...",
     ephemeral: true,
   });
-  const settings = await getUserSettings(userId);
+  const settings = await dbClient.getUser(userId);
   return interaction.editReply({
     content: describeSettings(settings),
     ephemeral: true,
   });
 };
 
-const handleSetAllowedMarketplaces = async ({ interaction }) => {
+const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
   } = interaction;
@@ -308,7 +309,7 @@ const handleSetAllowedMarketplaces = async ({ interaction }) => {
     content: "Fetching your preferences...",
     ephemeral: true,
   });
-  const { allowedMarketplaces } = await getUserSettings(userId);
+  const { allowedMarketplaces } = await dbClient.getUser(userId);
   console.log(
     `Allowed marketplaces for user ${userId}: ${JSON.stringify(
       allowedMarketplaces
@@ -334,7 +335,7 @@ const handleSetAllowedMarketplaces = async ({ interaction }) => {
   });
 };
 
-const handleSetAllowedEvents = async ({ interaction }) => {
+const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
   } = interaction;
@@ -342,7 +343,7 @@ const handleSetAllowedEvents = async ({ interaction }) => {
     content: "Fetching your preferences...",
     ephemeral: true,
   });
-  const { allowedEvents } = await getUserSettings(userId);
+  const { allowedEvents } = await dbClient.getUser(userId);
   console.log(
     `Allowed events for user ${userId}: ${JSON.stringify(allowedEvents)}`
   );
@@ -381,7 +382,7 @@ const handleUpdatePreferencesResponse = async (interaction, result) => {
   });
 };
 
-const handleSetMaxOfferFloorDifference = async ({ interaction }) => {
+const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
   } = interaction;
@@ -390,17 +391,16 @@ const handleSetMaxOfferFloorDifference = async ({ interaction }) => {
     content: "Fetching your preferences...",
     ephemeral: true,
   });
-  const result = await updateMaxOfferFloorDifference({
+  const result = await dbClient.setUserMaxFloorDifference({
     id: userId,
     maxOfferFloorDifference,
   });
   return handleUpdatePreferencesResponse(interaction, result);
 };
 
-const handleCommand = async (discordClient, moralisClient, interaction) => {
-  const { commandName } = interaction;
-  const args = { discordClient, moralisClient, interaction };
-  switch (commandName) {
+const handleCommand = async (args) => {
+  const { interaction } = args;
+  switch (interaction.commandName) {
     case "listalerts":
       return handleListAlerts(args);
     case "walletalert":
@@ -429,7 +429,7 @@ const handleCommand = async (discordClient, moralisClient, interaction) => {
   }
 };
 
-const handleAllowedMarketplacesPick = async ({ interaction }) => {
+const handleAllowedMarketplacesPick = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
     values: allowedMarketplaces,
@@ -438,14 +438,14 @@ const handleAllowedMarketplacesPick = async ({ interaction }) => {
     content: "Updating your preferences...",
     ephemeral: true,
   });
-  const result = await updateUserAllowedMarketplaces({
+  const result = await dbClient.setserAllowedMarketplaces({
     id: userId,
     allowedMarketplaces,
   });
   return handleUpdatePreferencesResponse(interaction, result);
 };
 
-const handleAllowedEventsPick = async ({ interaction }) => {
+const handleAllowedEventsPick = async ({ dbClient, interaction }) => {
   const {
     user: { id: userId },
     values: allowedEvents,
@@ -454,16 +454,15 @@ const handleAllowedEventsPick = async ({ interaction }) => {
     content: "Updating your preferences...",
     ephemeral: true,
   });
-  const result = await updateUserAllowedEvents({
+  const result = await dbClient.setUserAllowedEvents({
     id: userId,
     allowedEvents,
   });
   return handleUpdatePreferencesResponse(interaction, result);
 };
 
-const handleSelectMenu = async (discordClient, moralisClient, interaction) => {
+const handleSelectMenu = async (args, interaction) => {
   const { customId } = interaction;
-  const args = { discordClient, moralisClient, interaction };
   switch (customId) {
     case "allowedevents":
       return handleAllowedEventsPick(args);
@@ -473,10 +472,11 @@ const handleSelectMenu = async (discordClient, moralisClient, interaction) => {
   }
 };
 
-export default async (discordClient, moralisClient, interaction) => {
+export default async (clients, interaction) => {
+  const args = { ...clients, interaction };
   if (interaction.isCommand() && !interaction.replied) {
     try {
-      return await handleCommand(discordClient, moralisClient, interaction);
+      return await handleCommand(args);
     } catch (error) {
       console.log(error);
       return Promise.resolve();
@@ -485,7 +485,7 @@ export default async (discordClient, moralisClient, interaction) => {
 
   if (interaction.isSelectMenu()) {
     try {
-      return await handleSelectMenu(discordClient, moralisClient, interaction);
+      return await handleSelectMenu(args);
     } catch (error) {
       console.log(error);
       return Promise.resolve();

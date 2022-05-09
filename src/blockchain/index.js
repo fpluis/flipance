@@ -12,11 +12,6 @@ import {
 import fetch from "node-fetch";
 import logError from "./log-error.js";
 import sleep from "./sleep.js";
-import { users } from "./database/users.js";
-import {
-  collectionBids,
-  updateCollectionBid,
-} from "./database/collection-bids.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -26,7 +21,6 @@ const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 const POLL_COLLECTION_SLICE_DELAY = 60 * 1000;
 const MAX_GET_COLLECTION_RETRIES = 3;
-const POLL_LR_BIDS_DELAY = 60 * 1000;
 
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
 const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
@@ -85,7 +79,7 @@ const parseAddressFromLogs = (address) => {
   return address;
 };
 
-export const getUserNfts = async (moralisClient, addresses) => {
+export const getAddressNFTs = async (moralisClient, addresses) => {
   let index = 0;
   let tokens = [];
   while (index < addresses.length) {
@@ -368,7 +362,7 @@ const callLRWithRetries = (endpoint, retries = 3) =>
       return [];
     });
 
-const getCollectionBids = (collection) =>
+const getCollectionOffers = (collection) =>
   callLRWithRetries(
     `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=1&status[]=VALID&sort=PRICE_DESC`
   );
@@ -385,7 +379,11 @@ const getCollectionFloor = (collection) =>
     return price;
   });
 
-const pollCollectionBids = async (collections, emit, currentBids = []) => {
+export const pollCollectionOffers = async (
+  collections,
+  emit,
+  currentBids = []
+) => {
   const bids = await Promise.all(
     collections
       .slice(0, 60)
@@ -394,7 +392,7 @@ const pollCollectionBids = async (collections, emit, currentBids = []) => {
           collection,
           { price: currentHighest, endTime: currentEndTime, watchers },
         ]) => {
-          const bids = await getCollectionBids(collection).catch((error) => {
+          const bids = await getCollectionOffers(collection).catch((error) => {
             console.log(
               `Error getting collection bids for ${collection}`,
               error
@@ -412,26 +410,18 @@ const pollCollectionBids = async (collections, emit, currentBids = []) => {
             currentEndTime < new Date().getTime()
           ) {
             const collectionFloor = await getCollectionFloor(collection);
-            watchers.forEach(({ userId, tokenId }) => {
-              emit("bid", {
-                ...topBid,
-                collectionFloor,
-                price: etherUtils.formatEther(price),
-                buyer: signer,
-                endTime: endTime * 1000,
-                bidHash: hash,
-                marketplace: "looksRare",
-                collection,
-                userId,
-                tokenId,
-                network: "eth",
-                standard: "ERC-721",
-              });
-            });
-            await updateCollectionBid({
-              address: collection,
-              price,
+            emit("offer", {
+              ...topBid,
+              watchers,
+              collectionFloor,
+              price: etherUtils.formatEther(price),
+              buyer: signer,
               endTime: endTime * 1000,
+              bidHash: hash,
+              marketplace: "looksRare",
+              collection,
+              network: "eth",
+              standard: "ERC-721",
             });
           }
         }
@@ -441,35 +431,10 @@ const pollCollectionBids = async (collections, emit, currentBids = []) => {
   const otherCollections = collections.slice(60);
   if (otherCollections.length > 0) {
     await sleep(POLL_COLLECTION_SLICE_DELAY);
-    return pollCollectionBids(collections.slice(60), emit, newBids);
+    return pollCollectionOffers(collections.slice(60), emit, newBids);
   }
 
   return newBids;
-};
-
-const listenToNftBids = async (emit) => {
-  const collectionMap = Object.entries(users).reduce(
-    (collectionMap, [userId, { tokens }]) => {
-      tokens.forEach((token) => {
-        const [collection, tokenId] = token.split("/");
-        const { currentWatchers = [] } = collectionMap[collection] || {};
-        const { price, endTime } = collectionBids[collection] || {
-          price: "0",
-          endTime: new Date("1970-01-01").getTime(),
-        };
-        collectionMap[collection] = {
-          price,
-          endTime,
-          watchers: currentWatchers.concat([{ userId, tokenId }]),
-        };
-      });
-      return collectionMap;
-    },
-    {}
-  );
-  await pollCollectionBids(Object.entries(collectionMap), emit);
-  await sleep(POLL_LR_BIDS_DELAY);
-  listenToNftBids(emit);
 };
 
 const looksRareEventListener = (emit) => {
@@ -522,7 +487,6 @@ const looksRareEventListener = (emit) => {
       ...receiptInfo,
     });
   });
-  listenToNftBids(emit);
   return contract;
 };
 
@@ -777,7 +741,7 @@ export const calculateProfit = async (args) => {
     );
     if (receivedTx != null) {
       const received = BigNumber.from(receivedTx.value);
-      return received.sub(cost);
+      return etherUtils.formatEther(etherUtils.parseEther(received.sub(cost)));
     }
   } else {
     console.log(
