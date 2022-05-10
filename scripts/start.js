@@ -73,7 +73,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
       collection: collectionAddress = "",
     } = args;
 
-    const sellerWatchers = await dbClient.getAlertsByWallet(
+    const sellerWatchers = await dbClient.getAlertsByAddress(
       sellerAddress.toLowerCase()
     );
     if (sellerWatchers) {
@@ -101,7 +101,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
         });
     }
 
-    const buyerWatchers = await dbClient.getAlertsByWallet(
+    const buyerWatchers = await dbClient.getAlertsByAddress(
       buyerAddress.toLowerCase()
     );
     if (buyerWatchers) {
@@ -127,7 +127,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
         });
     }
 
-    const collectionWatchers = await dbClient.getAlertsByWallet(
+    const collectionWatchers = await dbClient.getAlertsByAddress(
       collectionAddress.toLowerCase()
     );
     if (collectionWatchers) {

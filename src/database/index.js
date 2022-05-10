@@ -8,91 +8,282 @@ const { Pool } = postgre;
 
 dotenv.config({ path: path.resolve(".env") });
 
-const { DB_HOSTNAME, DB_PORT, DB_USERNAME, DB_NAME, DB_PASSWORD } = process.env;
-const isTestMode = process.argv.includes("--test");
+const {
+  DB_HOSTNAME,
+  DB_PORT,
+  DB_USERNAME,
+  DB_NAME,
+  DB_PASSWORD,
+  DEFAULT_USER_ALARM_LIMIT = 1,
+} = process.env;
+// const isTestMode = process.argv.includes("--test");
 
-console.log(`Is test mode? ${isTestMode}`);
+// console.log(`Is test mode? ${isTestMode}`);
 
-export default async () => {
-  const host = DB_HOSTNAME;
-  const port = DB_PORT;
-  const user = DB_USERNAME;
-  const password = DB_PASSWORD;
+export const isDbCreated = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
   const pool = new Pool({
     host,
     port,
     user,
-    database: DB_NAME,
     password,
   });
 
-  pool.on("error", (err) => {
-    console.error("Unexpected error on client", err);
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
   });
 
-  const client = await pool.connect().catch((err) => {
-    client.release();
-    console.log(err.stack);
-    process.exit(-1);
+  const client = await pool.connect().catch((error) => {
+    throw error;
   });
 
-  const getDiscordUserSettings = async (discordId) => {
-    const { rows } = await pool.query(
+  const dbExistsResult = await client.query(
+    `SELECT datname FROM pg_catalog.pg_database WHERE datname='${dbName}'`
+  );
+  console.log(`Db exists result: ${JSON.stringify(dbExistsResult)}`);
+  await client.release();
+  await pool.end();
+  return dbExistsResult.rows.length === 0
+    ? false
+    : dbExistsResult.rows[0].datname === dbName;
+};
+
+export const createDb = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  const dbExists = await isDbCreated({ host, port, user, password, dbName });
+  if (dbExists) {
+    return false;
+  }
+
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+
+  console.log(`Created DB "${dbName}"`);
+  await client.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8'`);
+  await client.release();
+  return pool.end().then(() => true);
+};
+
+const createTableQueries = [
+  `CREATE TABLE IF NOT EXISTS settings (\
+    id serial PRIMARY KEY,\
+    max_offer_floor_difference SMALLINT,\
+    allowed_marketplaces TEXT [],\
+    allowed_events TEXT []\
+  );`,
+  `CREATE TABLE IF NOT EXISTS users (\
+    id serial PRIMARY KEY,\
+    settings_id INT NOT NULL,\
+    discord_id VARCHAR(20) NOT NULL,\
+    created_at TIMESTAMP NOT NULL,\
+    alarm_limit SMALLINT NOT NULL,\
+    addresses TEXT [],\
+    tokens TEXT [],\
+    FOREIGN KEY (settings_id)\
+        REFERENCES settings (id)\
+  );`,
+  `CREATE TABLE IF NOT EXISTS alerts (\
+    id serial PRIMARY KEY,\
+    settings_id INT NOT NULL,\
+    user_id INT NOT NULL,\
+    nickname VARCHAR(50) NOT NULL,\
+    UNIQUE (user_id, nickname),\
+    wallet VARCHAR(100) NOT NULL,\
+    created_at TIMESTAMP NOT NULL,\
+    channel_id VARCHAR(20),\
+    FOREIGN KEY (settings_id)\
+        REFERENCES "settings" (id),\
+    FOREIGN KEY (user_id)\
+        REFERENCES users (id)\
+  );`,
+  `CREATE TABLE IF NOT EXISTS offers (\
+    collection VARCHAR(100) NOT NULL,\
+    created_at TIMESTAMP NOT NULL,\
+    PRIMARY KEY (collection, created_at),\
+    ends_at TIMESTAMP NOT NULL,\
+    price SMALLINT NOT NULL,\
+    token_id VARCHAR(100)\
+  );`,
+  `CREATE TABLE IF NOT EXISTS floor_prices (\
+    collection VARCHAR(100) NOT NULL,\
+    created_at TIMESTAMP NOT NULL,\
+    PRIMARY KEY (collection, created_at),\
+    price SMALLINT NOT NULL\
+  );`,
+];
+
+export const setUpDb = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  console.log(`Set up DB`);
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    database: dbName,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+  await Promise.all(createTableQueries.map((query) => client.query(query)));
+  await client.release();
+  return pool.end();
+};
+
+export const clearDb = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  console.log(`Set up DB`);
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    database: dbName,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+  await client.query(`TRUNCATE settings, users, alerts, offers, floor_prices`);
+  await client.release();
+  return pool.end();
+};
+
+export const createDbClient = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    database: dbName,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+
+  const getUserByDiscordId = async (discordId) => {
+    const { rows } = await client.query(
       `SELECT * FROM users WHERE discord_id = $1`,
       [discordId]
     );
-    console.log(`Settings for user ${discordId}: ${JSON.stringify(rows)}`);
+    console.log(`User with discord id ${discordId}: ${JSON.stringify(rows)}`);
     return rows;
   };
 
-  const createAlert = async () => {};
+  const createAlert = async () => Promise.resolve({});
 
-  const deleteAlert = async () => {};
+  const setAlertNickname = async () => Promise.resolve({});
+
+  const deleteAlert = async () => Promise.resolve({});
+
+  const createUser = async ({
+    discordId,
+    alarmLimit = DEFAULT_USER_ALARM_LIMIT,
+    addresses,
+    tokens,
+  }) => Promise.resolve(true);
 
   // Also returns the settings associated to either
   // the alert or the user if the alert has no settings
-  const getAlertsByWallet = async () => {};
+  const getAlertsByAddress = async () => Promise.resolve([]);
 
-  const getAllUsers = async () => {};
+  const getAllUsers = async () => Promise.resolve([]);
 
-  const getUsers = async (ids) => {};
+  const getUsers = async (ids) => Promise.resolve([]);
 
-  const getUser = async () => {};
+  const getUserAlerts = async () => Promise.resolve([]);
 
-  const getUserAlerts = async () => {};
+  const addUserAddress = async () => Promise.resolve({});
 
-  const addUserAddress = async () => {};
+  const deleteUserAddress = async () => Promise.resolve({});
 
-  const deleteUserAddress = async () => {};
+  const setUserTokens = async () => Promise.resolve({});
 
-  const setUserTokens = async () => {};
+  const setMaxFloorDifference = async () => Promise.resolve({});
 
-  const setUserMaxFloorDifference = async () => {};
+  const setAllowedEvents = async () => Promise.resolve({});
 
-  const setUserAllowedEvents = async () => {};
+  const setAllowedMarketplaces = async () => Promise.resolve({});
 
-  const setserAllowedMarketplaces = async () => {};
+  const getAllOffers = async () => Promise.resolve({});
 
-  const getAllOffers = async () => {};
+  const setCollectionOffer = async () => Promise.resolve({});
 
-  const setCollectionOffer = async () => {};
+  const destroy = async () => {
+    await client.release();
+    return pool.end();
+  };
 
   return {
-    getDiscordUserSettings,
+    getUserByDiscordId,
     createAlert,
+    setAlertNickname,
     deleteAlert,
-    getAlertsByWallet,
+    createUser,
+    getAlertsByAddress,
     getAllUsers,
     getUsers,
-    getUser,
     getUserAlerts,
     addUserAddress,
     deleteUserAddress,
     setUserTokens,
-    setUserMaxFloorDifference,
-    setUserAllowedEvents,
-    setserAllowedMarketplaces,
+    setMaxFloorDifference,
+    setAllowedEvents,
+    setAllowedMarketplaces,
     getAllOffers,
     setCollectionOffer,
+    destroy,
   };
 };

@@ -31,6 +31,9 @@ const commands = [
         .setName("address")
         .setDescription("Wallet's address")
         .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option.setName("nickname").setDescription("Wallet's nickname")
     ),
   new SlashCommandBuilder()
     .setName("collectionalert")
@@ -42,6 +45,9 @@ const commands = [
         .setName("address")
         .setDescription("Collection's address")
         .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option.setName("nickname").setDescription("Collection's nickname")
     ),
   new SlashCommandBuilder()
     .setName("deletecollectionalert")

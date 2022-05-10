@@ -4,3 +4,4 @@ errors.txt
 .terraform.lock.hcl
 .env
 package-lock.json
+coverage

@@ -6,6 +6,19 @@
   "extends": [
     "eslint-config-pretty-strict"
   ],
+  "overrides": [
+    {
+      "extends": [
+        "plugin:jest/recommended"
+      ],
+      "files": [
+        "**/?(*.)+(spec|test).[jt]s?(x)"
+      ],
+      "plugins": [
+        "jest"
+      ]
+    }
+  ],
   "parserOptions": {
     "ecmaVersion": 2020,
     "sourceType": "module"

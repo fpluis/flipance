@@ -11,20 +11,25 @@
     "ethers": "^5.5.3",
     "moralis": "^1.5.9",
     "node-fetch": "^3.2.3",
+    "pg": "^8.7.3",
     "sharp": "^0.30.3"
   },
   "devDependencies": {
     "dotenv": "^16.0.0",
     "eslint": "7.32.0",
     "eslint-config-pretty-strict": "8.0.2",
+    "eslint-plugin-jest": "24.4.0",
     "eslint-plugin-import": "^2.23.4",
     "eslint-plugin-prettier": "3.4.1",
+    "jest": "27.0.6",
     "prettier": "2.3.2"
   },
   "type": "module",
   "scripts": {
     "start": "node --experimental-vm-modules scripts/start.js",
+    "setup-db": "node --experimental-vm-modules scripts/setup-db.js",
     "register-commands": "node --experimental-vm-modules scripts/register-commands.js",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "deploy": "terraform apply -var-file=\"example.tfvars\""
   }
 }
