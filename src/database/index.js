@@ -1,8 +1,14 @@
-/* eslint-disable no-multi-str */
+import { readFileSync } from "fs";
 import process from "process";
 import path from "path";
 import dotenv from "dotenv";
 import postgre from "pg";
+
+const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
+const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
+
+const allMarketplaceIds = marketplaces.map(({ id }) => id);
+const allEventIds = nftEvents.map(({ id }) => id);
 
 const { Pool } = postgre;
 
@@ -14,11 +20,12 @@ const {
   DB_USERNAME,
   DB_NAME,
   DB_PASSWORD,
-  DEFAULT_USER_ALARM_LIMIT = 1,
+  DEFAULT_USER_ALARM_LIMIT = 3,
+  DEFAULT_SERVER_ALARM_LIMIT = 1,
+  DEFAULT_MAX_OFFER_FLOOR_DISTANCE = 15,
+  DEFAULT_ALLOWED_MARKETPLACES = allMarketplaceIds,
+  DEFAULT_ALLOWED_EVENTS = allEventIds,
 } = process.env;
-// const isTestMode = process.argv.includes("--test");
-
-// console.log(`Is test mode? ${isTestMode}`);
 
 export const isDbCreated = async ({
   host = DB_HOSTNAME,
@@ -87,6 +94,7 @@ export const createDb = async ({
 };
 
 const createTableQueries = [
+  `CREATE TYPE alert_type AS ENUM ('wallet', 'collection')`,
   `CREATE TABLE IF NOT EXISTS settings (\
     id serial PRIMARY KEY,\
     max_offer_floor_difference SMALLINT,\
@@ -96,8 +104,9 @@ const createTableQueries = [
   `CREATE TABLE IF NOT EXISTS users (\
     id serial PRIMARY KEY,\
     settings_id INT NOT NULL,\
-    discord_id VARCHAR(20) NOT NULL,\
-    created_at TIMESTAMP NOT NULL,\
+    discord_id VARCHAR(20),\
+    UNIQUE (discord_id),\
+    created_at TIMESTAMPTZ NOT NULL,\
     alarm_limit SMALLINT NOT NULL,\
     addresses TEXT [],\
     tokens TEXT [],\
@@ -106,12 +115,13 @@ const createTableQueries = [
   );`,
   `CREATE TABLE IF NOT EXISTS alerts (\
     id serial PRIMARY KEY,\
+    type alert_type,\
     settings_id INT NOT NULL,\
     user_id INT NOT NULL,\
-    nickname VARCHAR(50) NOT NULL,\
+    nickname VARCHAR(50),\
     UNIQUE (user_id, nickname),\
-    wallet VARCHAR(100) NOT NULL,\
-    created_at TIMESTAMP NOT NULL,\
+    address VARCHAR(100) NOT NULL,\
+    created_at TIMESTAMPTZ NOT NULL,\
     channel_id VARCHAR(20),\
     FOREIGN KEY (settings_id)\
         REFERENCES "settings" (id),\
@@ -120,15 +130,15 @@ const createTableQueries = [
   );`,
   `CREATE TABLE IF NOT EXISTS offers (\
     collection VARCHAR(100) NOT NULL,\
-    created_at TIMESTAMP NOT NULL,\
-    PRIMARY KEY (collection, created_at),\
-    ends_at TIMESTAMP NOT NULL,\
-    price SMALLINT NOT NULL,\
-    token_id VARCHAR(100)\
+    token_id VARCHAR(100),\
+    PRIMARY KEY (collection, token_id),\
+    created_at TIMESTAMPTZ NOT NULL,\
+    ends_at TIMESTAMPTZ NOT NULL,\
+    price SMALLINT NOT NULL\
   );`,
   `CREATE TABLE IF NOT EXISTS floor_prices (\
     collection VARCHAR(100) NOT NULL,\
-    created_at TIMESTAMP NOT NULL,\
+    created_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
     price SMALLINT NOT NULL\
   );`,
@@ -169,7 +179,6 @@ export const clearDb = async ({
   password = DB_PASSWORD,
   dbName = DB_NAME,
 }) => {
-  console.log(`Set up DB`);
   const pool = new Pool({
     host,
     port,
@@ -188,6 +197,132 @@ export const clearDb = async ({
   await client.query(`TRUNCATE settings, users, alerts, offers, floor_prices`);
   await client.release();
   return pool.end();
+};
+
+export const removeDb = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = DB_USERNAME,
+  password = DB_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+  // await client.query(`REVOKE CONNECT ON DATABASE "${dbName}" FROM public`);
+  await client.query(`DROP DATABASE "${dbName}"`);
+  await client.release();
+  return pool.end();
+};
+
+const toSettingsObject = (settings) => {
+  if (settings == null) {
+    return null;
+  }
+
+  const {
+    max_offer_floor_difference: maxOfferFloorDifference,
+    allowed_marketplaces: allowedMarketplaces,
+    allowed_events: allowedEvents,
+    ...props
+  } = settings;
+  return {
+    ...props,
+    maxOfferFloorDifference,
+    allowedMarketplaces,
+    allowedEvents,
+  };
+};
+
+const toUserObject = (user) => {
+  if (user == null) {
+    return null;
+  }
+
+  const {
+    settings_id: settingsId,
+    discord_id: discordId,
+    created_at: createdAt,
+    alarm_limit: alarmLimit,
+    max_offer_floor_difference: maxOfferFloorDifference,
+    allowed_marketplaces: allowedMarketplaces,
+    allowed_events: allowedEvents,
+    ...props
+  } = user;
+  return {
+    ...props,
+    maxOfferFloorDifference,
+    allowedMarketplaces,
+    allowedEvents,
+    settingsId,
+    discordId,
+    createdAt,
+    alarmLimit,
+  };
+};
+
+const toAlertObject = (alert) => {
+  if (alert == null) {
+    return null;
+  }
+
+  const {
+    settings_id: settingsId,
+    user_id: userId,
+    created_at: createdAt,
+    channel_id: channelId,
+    max_offer_floor_difference: maxOfferFloorDifference,
+    allowed_marketplaces: allowedMarketplaces,
+    allowed_events: allowedEvents,
+    ...props
+  } = alert;
+  return {
+    ...props,
+    settingsId,
+    userId,
+    createdAt,
+    channelId,
+    maxOfferFloorDifference:
+      maxOfferFloorDifference == null
+        ? DEFAULT_MAX_OFFER_FLOOR_DISTANCE
+        : maxOfferFloorDifference,
+    allowedMarketplaces:
+      allowedMarketplaces == null
+        ? DEFAULT_ALLOWED_MARKETPLACES
+        : allowedMarketplaces,
+    allowedEvents:
+      allowedEvents == null ? DEFAULT_ALLOWED_EVENTS : allowedEvents,
+  };
+};
+
+const toOfferObject = (offer) => {
+  if (offer == null) {
+    return null;
+  }
+
+  const {
+    token_id: tokenId,
+    ends_at: endsAt,
+    created_at: createdAt,
+    ...props
+  } = offer;
+  return {
+    ...props,
+    tokenId,
+    endsAt,
+    createdAt,
+  };
 };
 
 export const createDbClient = async ({
@@ -215,51 +350,351 @@ export const createDbClient = async ({
 
   const getUserByDiscordId = async (discordId) => {
     const { rows } = await client.query(
-      `SELECT * FROM users WHERE discord_id = $1`,
+      `SELECT * FROM users
+      LEFT JOIN settings\
+      ON settings.id = users.settings_id\
+      WHERE discord_id = $1`,
       [discordId]
     );
-    console.log(`User with discord id ${discordId}: ${JSON.stringify(rows)}`);
-    return rows;
+    return { success: true, object: toUserObject(rows[0]) };
   };
 
-  const createAlert = async () => Promise.resolve({});
-
-  const setAlertNickname = async () => Promise.resolve({});
-
-  const deleteAlert = async () => Promise.resolve({});
+  // const createSettings = async ({
+  //   maxOfferFloorDistance = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
+  //   allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
+  //   allowedEvents = DEFAULT_ALLOWED_EVENTS,
+  // } = {}) => {
+  //   const values =
+  // [maxOfferFloorDistance, allowedMarketplaces, allowedEvents];
+  //   const { rows } = await client.query(
+  //     `INSERT INTO settings\
+  // (max_offer_floor_difference, allowed_marketplaces, allowed_events)\
+  // VALUES ($1, $2, $3) RETURNING *`,
+  //     values
+  //   );
+  //   return {
+  //     success: rows.length > 0,
+  //     object: toSettingsObject(rows[0]),
+  //   };
+  // };
 
   const createUser = async ({
     discordId,
-    alarmLimit = DEFAULT_USER_ALARM_LIMIT,
+    type = "user",
     addresses,
     tokens,
-  }) => Promise.resolve(true);
+    maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
+    allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
+    allowedEvents = DEFAULT_ALLOWED_EVENTS,
+  }) => {
+    const alarmLimit =
+      type === "user" ? DEFAULT_USER_ALARM_LIMIT : DEFAULT_SERVER_ALARM_LIMIT;
+    const values = [
+      maxOfferFloorDifference,
+      allowedMarketplaces,
+      allowedEvents,
+      discordId,
+      alarmLimit,
+      addresses,
+      tokens,
+      new Date(),
+    ];
+    return client
+      .query(
+        `WITH new_settings AS (
+          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES ($1, $2, $3) returning id
+        ) \
+        INSERT INTO users (discord_id, alarm_limit, addresses, tokens, created_at, settings_id) VALUES($4, $5, $6, $7, $8, (SELECT * from new_settings)) RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return { success: rows.length > 0, object: toUserObject(rows[0]) };
+      })
+      .catch((error) => {
+        console.log(
+          `Error inserting user with values ${JSON.stringify(values)}`,
+          error
+        );
+        return { success: false, object: null };
+      });
+  };
+
+  const createAlert = async ({
+    discordId,
+    userId: providedUserId,
+    channelId,
+    nickname,
+    address,
+    type,
+    maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
+    allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
+    allowedEvents = DEFAULT_ALLOWED_EVENTS,
+  }) => {
+    // At least one id is necessary to associate an alert to a user
+    if (discordId == null && providedUserId == null) {
+      return { success: false, object: null };
+    }
+
+    let userId = providedUserId;
+    if (providedUserId == null) {
+      const { object: user } = await getUserByDiscordId(discordId);
+      if (user == null) {
+        return { success: false, object: null };
+      }
+
+      userId = user.id;
+    }
+
+    const values = [
+      maxOfferFloorDifference,
+      allowedMarketplaces,
+      allowedEvents,
+      type,
+      userId,
+      address,
+      new Date(),
+    ];
+    const props = ["type", "user_id", "address", "created_at"];
+    if (nickname) {
+      values.push(nickname);
+      props.push("nickname");
+    }
+
+    if (channelId) {
+      values.push(channelId);
+      props.push("channel_id");
+    }
+
+    const propsQuery = props.join(", ");
+    // We have to add 4 to take into account that pg expects
+    //  1-indexed references and that we have to skip the
+    // first 3 values, which are used for settings
+    const valuesQuery = values
+      .slice(3)
+      .map((_, index) => `$${index + 4}`)
+      .join(", ");
+    return client
+      .query(
+        `WITH new_settings AS (
+          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES ($1, $2, $3) returning id
+        ) \
+        INSERT INTO alerts (${propsQuery}, settings_id) VALUES (${valuesQuery}, (SELECT * from new_settings)) RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return { success: rows.length > 0, object: toAlertObject(rows[0]) };
+      })
+      .catch(() => {
+        return { success: false, object: null };
+      });
+  };
+
+  const setAlertNickname = async ({ discordId, address, nickname }) => {
+    const { rows } = await client.query(
+      `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
+      [discordId, address, nickname]
+    );
+    return { success: rows.length > 0, object: toAlertObject(rows[0]) };
+  };
+
+  const deleteAlert = async ({ discordId, address, nickname }) => {
+    if (discordId == null || (address == null && nickname == null)) {
+      return { success: false, object: null };
+    }
+
+    let values;
+    let identifierCondition;
+    if (address == null) {
+      identifierCondition = `nickname = $2`;
+      values = [discordId, nickname];
+    } else {
+      identifierCondition = `address = $2`;
+      values = [discordId, address];
+    }
+
+    const result = await client.query(
+      `DELETE from alerts WHERE user_id = (SELECT user_id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
+      values
+    );
+    console.log(`DELETE alert result: ${JSON.stringify(result)}`);
+    return { success: result.rowCount > 0, object: result.rows[0] };
+  };
 
   // Also returns the settings associated to either
   // the alert or the user if the alert has no settings
-  const getAlertsByAddress = async () => Promise.resolve([]);
+  const getAlertsByAddress = async (address) => {
+    const { rows } = await client.query(
+      `SELECT *, alerts.id FROM alerts\
+      LEFT JOIN settings\
+      ON settings.id = alerts.settings_id\
+      WHERE address = $1`,
+      [address]
+    );
+    console.log(`Alert rows by address ${address}: ${JSON.stringify(rows)}`);
+    return { success: true, objects: rows.map(toAlertObject) };
+  };
 
-  const getAllUsers = async () => Promise.resolve([]);
+  const getAllUsers = async () => {
+    const { rows } = await client.query(`SELECT * FROM users`);
+    return { success: true, objects: rows.map(toUserObject) };
+  };
 
-  const getUsers = async (ids) => Promise.resolve([]);
+  const getUsers = async (ids) => {
+    if (ids.length === 0) {
+      return { success: true, objects: [] };
+    }
 
-  const getUserAlerts = async () => Promise.resolve([]);
+    const idsReference = ids.map((_, index) => `$${index + 1}`).join(", ");
+    console.log(
+      `Get users with ids reference ${idsReference}", ids ${JSON.stringify(
+        ids
+      )}`
+    );
+    const { rows } = await client.query(
+      `SELECT * FROM users\
+      LEFT JOIN settings\
+      ON settings.id = users.settings_id\
+      WHERE users.id IN (${idsReference})`,
+      ids
+    );
+    return { success: true, objects: rows.map(toUserObject) };
+  };
 
-  const addUserAddress = async () => Promise.resolve({});
+  const getUserAlerts = async ({ discordId }) => {
+    const { rows } = await client.query(
+      `SELECT *, alerts.id FROM alerts\
+      LEFT JOIN settings\
+      ON settings.id = alerts.settings_id\
+      WHERE user_id = (SELECT id FROM users WHERE discord_id = $1)`,
+      [discordId]
+    );
+    console.log(`Alerts for user ${discordId}: ${JSON.stringify(rows)}`);
+    return { success: true, objects: rows.map(toAlertObject) };
+  };
 
-  const deleteUserAddress = async () => Promise.resolve({});
+  const addUserAddress = async ({ discordId, addresses, tokens }) => {
+    const result = await client.query(
+      `UPDATE users\
+      SET addresses = array_cat(addresses, $2), tokens = array_cat(tokens, $3)\
+      WHERE discord_id = $1\
+      RETURNING *`,
+      [discordId, addresses, tokens]
+    );
+    console.log(`Add user address result: ${JSON.stringify(result)}`);
+    const { rows } = result;
+    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+  };
 
-  const setUserTokens = async () => Promise.resolve({});
+  const deleteUserAddresses = async ({ discordId, addresses, tokens }) => {
+    const result = await client.query(
+      `UPDATE users\
+      SET addresses =\
+        (SELECT array(SELECT unnest (addresses::TEXT[]) EXCEPT SELECT unnest ($2::TEXT[]))),\
+      tokens =\
+        (SELECT array(SELECT unnest (tokens::TEXT[]) EXCEPT SELECT unnest ($3::TEXT[])))\
+      WHERE discord_id = $1\
+      RETURNING *`,
+      [discordId, addresses, tokens]
+    );
+    console.log(`Add user address result: ${JSON.stringify(result)}`);
+    const { rows } = result;
+    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+  };
 
-  const setMaxFloorDifference = async () => Promise.resolve({});
+  const setUserTokens = async ({ id, tokens }) => {
+    const result = await client.query(
+      `UPDATE users\
+      SET tokens = $2\
+      WHERE id = $1\
+      RETURNING *`,
+      [id, tokens]
+    );
+    console.log(`Add user address result: ${JSON.stringify(result)}`);
+    const { rows } = result;
+    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+  };
 
-  const setAllowedEvents = async () => Promise.resolve({});
+  const setMaxFloorDifference = async ({
+    discordId,
+    address,
+    maxOfferFloorDifference,
+  }) => {
+    const values = [discordId, maxOfferFloorDifference];
+    let condition =
+      "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
+    if (address != null) {
+      values.push(address);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    }
 
-  const setAllowedMarketplaces = async () => Promise.resolve({});
+    const response = await client.query(
+      `UPDATE settings SET max_offer_floor_difference = $2 WHERE ${condition} RETURNING *`,
+      values
+    );
+    const { rows } = response;
+    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+  };
 
-  const getAllOffers = async () => Promise.resolve({});
+  const setAllowedEvents = async ({ discordId, address, allowedEvents }) => {
+    const values = [discordId, allowedEvents];
+    let condition =
+      "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
+    if (address != null) {
+      values.push(address);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    }
 
-  const setCollectionOffer = async () => Promise.resolve({});
+    const response = await client.query(
+      `UPDATE settings SET allowed_events = $2 WHERE ${condition} RETURNING *`,
+      values
+    );
+    const { rows } = response;
+    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+  };
+
+  const setAllowedMarketplaces = async ({
+    discordId,
+    address,
+    allowedMarketplaces,
+  }) => {
+    const values = [discordId, allowedMarketplaces];
+    let condition =
+      "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
+    if (address != null) {
+      values.push(address);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    }
+
+    const response = await client.query(
+      `UPDATE settings SET allowed_marketplaces = $2 WHERE ${condition} RETURNING *`,
+      values
+    );
+    const { rows } = response;
+    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+  };
+
+  const getAllCollectionOffers = async () => {
+    const { rows } = await client.query(`SELECT * FROM offers\
+    WHERE token_id = ''`);
+    return { success: true, objects: rows.map(toOfferObject) };
+  };
+
+  const setCollectionOffer = async ({ address, price, endsAt }) => {
+    const values = [address, price, new Date(endsAt), new Date(), ""];
+    const { rows } = await client.query(
+      `INSERT INTO offers (collection, price, ends_at, created_at, token_id)\
+      VALUES($1, $2, $3, $4, $5)\
+      ON CONFLICT (collection, token_id)\
+      DO\
+        UPDATE SET collection = $1, price = $2, ends_at = $3, created_at = $4, token_id = $5\
+      RETURNING *`,
+      values
+    );
+    return { success: rows.length > 0, object: toOfferObject(rows[0]) };
+  };
 
   const destroy = async () => {
     await client.release();
@@ -277,12 +712,12 @@ export const createDbClient = async ({
     getUsers,
     getUserAlerts,
     addUserAddress,
-    deleteUserAddress,
+    deleteUserAddresses,
     setUserTokens,
     setMaxFloorDifference,
     setAllowedEvents,
     setAllowedMarketplaces,
-    getAllOffers,
+    getAllCollectionOffers,
     setCollectionOffer,
     destroy,
   };
