@@ -52,7 +52,6 @@ export const isDbCreated = async ({
   const dbExistsResult = await client.query(
     `SELECT datname FROM pg_catalog.pg_database WHERE datname='${dbName}'`
   );
-  console.log(`Db exists result: ${JSON.stringify(dbExistsResult)}`);
   await client.release();
   await pool.end();
   return dbExistsResult.rows.length === 0
@@ -120,6 +119,7 @@ const createTableQueries = [
     user_id INT NOT NULL,\
     nickname VARCHAR(50),\
     UNIQUE (user_id, nickname),\
+    UNIQUE (user_id, address),\
     address VARCHAR(100) NOT NULL,\
     created_at TIMESTAMPTZ NOT NULL,\
     channel_id VARCHAR(20),\
@@ -348,7 +348,11 @@ export const createDbClient = async ({
     throw error;
   });
 
-  const getUserByDiscordId = async (discordId) => {
+  const getUserByDiscordId = async ({ discordId } = {}) => {
+    if (discordId == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const { rows } = await client.query(
       `SELECT * FROM users
       LEFT JOIN settings\
@@ -356,37 +360,25 @@ export const createDbClient = async ({
       WHERE discord_id = $1`,
       [discordId]
     );
-    return { success: true, object: toUserObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "missing-user",
+      object: toUserObject(rows[0]),
+    };
   };
-
-  // const createSettings = async ({
-  //   maxOfferFloorDistance = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
-  //   allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
-  //   allowedEvents = DEFAULT_ALLOWED_EVENTS,
-  // } = {}) => {
-  //   const values =
-  // [maxOfferFloorDistance, allowedMarketplaces, allowedEvents];
-  //   const { rows } = await client.query(
-  //     `INSERT INTO settings\
-  // (max_offer_floor_difference, allowed_marketplaces, allowed_events)\
-  // VALUES ($1, $2, $3) RETURNING *`,
-  //     values
-  //   );
-  //   return {
-  //     success: rows.length > 0,
-  //     object: toSettingsObject(rows[0]),
-  //   };
-  // };
 
   const createUser = async ({
     discordId,
     type = "user",
-    addresses,
-    tokens,
+    addresses = [],
+    tokens = [],
     maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
     allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
     allowedEvents = DEFAULT_ALLOWED_EVENTS,
-  }) => {
+  } = {}) => {
+    if (discordId == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const alarmLimit =
       type === "user" ? DEFAULT_USER_ALARM_LIMIT : DEFAULT_SERVER_ALARM_LIMIT;
     const values = [
@@ -408,14 +400,22 @@ export const createDbClient = async ({
         values
       )
       .then(({ rows }) => {
-        return { success: rows.length > 0, object: toUserObject(rows[0]) };
+        return {
+          result: rows.length > 0 ? "success" : "error",
+          object: toUserObject(rows[0]),
+        };
       })
       .catch((error) => {
         console.log(
           `Error inserting user with values ${JSON.stringify(values)}`,
           error
         );
-        return { success: false, object: null };
+        const { constraint } = error;
+        return {
+          object: null,
+          result:
+            constraint === "users_discord_id_key" ? "already-exists" : "error",
+        };
       });
   };
 
@@ -429,17 +429,17 @@ export const createDbClient = async ({
     maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
     allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
     allowedEvents = DEFAULT_ALLOWED_EVENTS,
-  }) => {
+  } = {}) => {
     // At least one id is necessary to associate an alert to a user
     if (discordId == null && providedUserId == null) {
-      return { success: false, object: null };
+      return { result: "missing-arguments", object: null };
     }
 
     let userId = providedUserId;
     if (providedUserId == null) {
       const { object: user } = await getUserByDiscordId(discordId);
       if (user == null) {
-        return { success: false, object: null };
+        return { result: "missing-user", object: null };
       }
 
       userId = user.id;
@@ -482,24 +482,46 @@ export const createDbClient = async ({
         values
       )
       .then(({ rows }) => {
-        return { success: rows.length > 0, object: toAlertObject(rows[0]) };
+        return {
+          result: rows.length > 0 ? "success" : "error",
+          object: toAlertObject(rows[0]),
+        };
       })
-      .catch(() => {
-        return { success: false, object: null };
+      .catch((error) => {
+        console.log(
+          `Error creating alert with props ${JSON.stringify(
+            props
+          )} and values ${JSON.stringify(values)}: ${JSON.stringify(error)}`
+        );
+        const { constraint } = error;
+        return {
+          object: null,
+          result:
+            constraint === "alerts_user_id_address_key"
+              ? "already-exists"
+              : "missing-user",
+        };
       });
   };
 
-  const setAlertNickname = async ({ discordId, address, nickname }) => {
+  const setAlertNickname = async ({ discordId, address, nickname } = {}) => {
+    if (discordId == null || address == null || nickname == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const { rows } = await client.query(
       `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
       [discordId, address, nickname]
     );
-    return { success: rows.length > 0, object: toAlertObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "error",
+      object: toAlertObject(rows[0]),
+    };
   };
 
-  const deleteAlert = async ({ discordId, address, nickname }) => {
+  const deleteAlert = async ({ discordId, address, nickname } = {}) => {
     if (discordId == null || (address == null && nickname == null)) {
-      return { success: false, object: null };
+      return { result: "missing-arguments", object: null };
     }
 
     let values;
@@ -517,12 +539,19 @@ export const createDbClient = async ({
       values
     );
     console.log(`DELETE alert result: ${JSON.stringify(result)}`);
-    return { success: result.rowCount > 0, object: result.rows[0] };
+    return {
+      result: result.rowCount > 0 ? "success" : "missing-alert",
+      object: result.rows[0],
+    };
   };
 
   // Also returns the settings associated to either
   // the alert or the user if the alert has no settings
-  const getAlertsByAddress = async (address) => {
+  const getAlertsByAddress = async ({ address } = {}) => {
+    if (address == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
     const { rows } = await client.query(
       `SELECT *, alerts.id FROM alerts\
       LEFT JOIN settings\
@@ -530,26 +559,24 @@ export const createDbClient = async ({
       WHERE address = $1`,
       [address]
     );
-    console.log(`Alert rows by address ${address}: ${JSON.stringify(rows)}`);
-    return { success: true, objects: rows.map(toAlertObject) };
+    return { result: "success", objects: rows.map(toAlertObject) };
   };
 
   const getAllUsers = async () => {
     const { rows } = await client.query(`SELECT * FROM users`);
-    return { success: true, objects: rows.map(toUserObject) };
+    return { result: "success", objects: rows.map(toUserObject) };
   };
 
-  const getUsers = async (ids) => {
+  const getUsers = async ({ ids } = {}) => {
+    if (ids == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
     if (ids.length === 0) {
-      return { success: true, objects: [] };
+      return { result: "success", objects: [] };
     }
 
     const idsReference = ids.map((_, index) => `$${index + 1}`).join(", ");
-    console.log(
-      `Get users with ids reference ${idsReference}", ids ${JSON.stringify(
-        ids
-      )}`
-    );
     const { rows } = await client.query(
       `SELECT * FROM users\
       LEFT JOIN settings\
@@ -557,10 +584,14 @@ export const createDbClient = async ({
       WHERE users.id IN (${idsReference})`,
       ids
     );
-    return { success: true, objects: rows.map(toUserObject) };
+    return { result: "success", objects: rows.map(toUserObject) };
   };
 
-  const getUserAlerts = async ({ discordId }) => {
+  const getUserAlerts = async ({ discordId } = {}) => {
+    if (discordId == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
     const { rows } = await client.query(
       `SELECT *, alerts.id FROM alerts\
       LEFT JOIN settings\
@@ -568,11 +599,14 @@ export const createDbClient = async ({
       WHERE user_id = (SELECT id FROM users WHERE discord_id = $1)`,
       [discordId]
     );
-    console.log(`Alerts for user ${discordId}: ${JSON.stringify(rows)}`);
-    return { success: true, objects: rows.map(toAlertObject) };
+    return { result: "success", objects: rows.map(toAlertObject) };
   };
 
-  const addUserAddress = async ({ discordId, addresses, tokens }) => {
+  const addUserAddress = async ({ discordId, addresses, tokens = [] } = {}) => {
+    if (discordId == null || addresses == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const result = await client.query(
       `UPDATE users\
       SET addresses = array_cat(addresses, $2), tokens = array_cat(tokens, $3)\
@@ -580,12 +614,22 @@ export const createDbClient = async ({
       RETURNING *`,
       [discordId, addresses, tokens]
     );
-    console.log(`Add user address result: ${JSON.stringify(result)}`);
     const { rows } = result;
-    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "missing-user",
+      object: toUserObject(rows[0]),
+    };
   };
 
-  const deleteUserAddresses = async ({ discordId, addresses, tokens }) => {
+  const deleteUserAddresses = async ({
+    discordId,
+    addresses,
+    tokens = [],
+  } = {}) => {
+    if (discordId == null || addresses == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const result = await client.query(
       `UPDATE users\
       SET addresses =\
@@ -596,12 +640,18 @@ export const createDbClient = async ({
       RETURNING *`,
       [discordId, addresses, tokens]
     );
-    console.log(`Add user address result: ${JSON.stringify(result)}`);
     const { rows } = result;
-    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "missing-user",
+      object: toUserObject(rows[0]),
+    };
   };
 
-  const setUserTokens = async ({ id, tokens }) => {
+  const setUserTokens = async ({ id, tokens } = {}) => {
+    if (id == null || tokens == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const result = await client.query(
       `UPDATE users\
       SET tokens = $2\
@@ -609,16 +659,22 @@ export const createDbClient = async ({
       RETURNING *`,
       [id, tokens]
     );
-    console.log(`Add user address result: ${JSON.stringify(result)}`);
     const { rows } = result;
-    return { success: rows.length > 0, object: toUserObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "missing-user",
+      object: toUserObject(rows[0]),
+    };
   };
 
   const setMaxFloorDifference = async ({
     discordId,
     address,
     maxOfferFloorDifference,
-  }) => {
+  } = {}) => {
+    if (discordId == null || maxOfferFloorDifference == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const values = [discordId, maxOfferFloorDifference];
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
@@ -633,10 +689,26 @@ export const createDbClient = async ({
       values
     );
     const { rows } = response;
-    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+    return {
+      result:
+        rows.length > 0
+          ? "success"
+          : address == null
+          ? "missing-user"
+          : "missing-alert",
+      object: toSettingsObject(rows[0]),
+    };
   };
 
-  const setAllowedEvents = async ({ discordId, address, allowedEvents }) => {
+  const setAllowedEvents = async ({
+    discordId,
+    address,
+    allowedEvents,
+  } = {}) => {
+    if (discordId == null || allowedEvents == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const values = [discordId, allowedEvents];
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
@@ -651,14 +723,26 @@ export const createDbClient = async ({
       values
     );
     const { rows } = response;
-    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+    return {
+      result:
+        rows.length > 0
+          ? "success"
+          : address == null
+          ? "missing-user"
+          : "missing-alert",
+      object: toSettingsObject(rows[0]),
+    };
   };
 
   const setAllowedMarketplaces = async ({
     discordId,
     address,
     allowedMarketplaces,
-  }) => {
+  } = {}) => {
+    if (discordId == null || allowedMarketplaces == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const values = [discordId, allowedMarketplaces];
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
@@ -673,16 +757,28 @@ export const createDbClient = async ({
       values
     );
     const { rows } = response;
-    return { success: rows.length > 0, object: toSettingsObject(rows[0]) };
+    return {
+      result:
+        rows.length > 0
+          ? "success"
+          : address == null
+          ? "missing-user"
+          : "missing-alert",
+      object: toSettingsObject(rows[0]),
+    };
   };
 
   const getAllCollectionOffers = async () => {
     const { rows } = await client.query(`SELECT * FROM offers\
     WHERE token_id = ''`);
-    return { success: true, objects: rows.map(toOfferObject) };
+    return { result: "success", objects: rows.map(toOfferObject) };
   };
 
-  const setCollectionOffer = async ({ address, price, endsAt }) => {
+  const setCollectionOffer = async ({ address, price, endsAt } = {}) => {
+    if (address == null || price == null || endsAt == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
     const values = [address, price, new Date(endsAt), new Date(), ""];
     const { rows } = await client.query(
       `INSERT INTO offers (collection, price, ends_at, created_at, token_id)\
@@ -693,7 +789,10 @@ export const createDbClient = async ({
       RETURNING *`,
       values
     );
-    return { success: rows.length > 0, object: toOfferObject(rows[0]) };
+    return {
+      result: rows.length > 0 ? "success" : "error",
+      object: toOfferObject(rows[0]),
+    };
   };
 
   const destroy = async () => {
