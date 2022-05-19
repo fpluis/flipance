@@ -180,7 +180,6 @@ test("getAllAlerts after creating two alerts", async () => {
     address: address2,
   });
   const { result, objects: alerts } = await dbClient.getAllAlerts();
-  console.log(`Alerts: ${JSON.stringify(alerts)}`);
   expect(result).toBe("success");
   expect(alerts.length).toBe(2);
   expect(alerts[0].id).not.toBe(alerts[1].id);
@@ -263,18 +262,14 @@ test("setMaxFloorDifference on an existing alert by address", async () => {
     type: "wallet",
     address: address1,
   });
-  const { object } = await dbClient.setMaxFloorDifference({
+  await dbClient.setMaxFloorDifference({
     discordId: discordId1,
     address: address1,
     maxOfferFloorDifference: 10,
   });
-  console.log(`New settings: ${JSON.stringify(object)}`);
   const {
     objects: [alert],
   } = await dbClient.getAlertsByAddress({ address: address1 });
-  console.log(
-    `Alert after setting max floor diff to 10: ${JSON.stringify(alert)}`
-  );
   expect(alert.maxOfferFloorDifference).toBe(10);
 });
 

@@ -59,18 +59,6 @@ const isAllowedByUserPreferences = (
     maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
   } = {}
 ) => {
-  console.log(
-    `Deciding if notification with ${JSON.stringify({
-      marketplace,
-      saleType,
-      collectionFloor,
-      price,
-    })} is allowed by preferences ${JSON.stringify({
-      allowedMarketplaces,
-      allowedEvents,
-      maxOfferFloorDifference,
-    })}`
-  );
   if (
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(saleType)
@@ -84,11 +72,6 @@ const isAllowedByUserPreferences = (
     }
 
     const floorDifference = (collectionFloor - price) / collectionFloor;
-    console.log(
-      `Is price lower than the max offer floor difference? ${floorDifference}, ${maxOfferFloorDifference}, ${
-        100 * floorDifference < Number(maxOfferFloorDifference)
-      }`
-    );
     return 100 * floorDifference < Number(maxOfferFloorDifference);
   }
 
@@ -191,11 +174,6 @@ const notifySales = async ({ discordClient, dbClient }) => {
       const { discordId, channelId, tokenIds, settings } = watcher;
       if (isAllowedByUserPreferences(args, settings)) {
         try {
-          console.log(
-            `Notififying user/channel ${discordId}/${channelId} (watcher: ${JSON.stringify(
-              watcher
-            )})`
-          );
           const target = await (channelId == null
             ? discordClient.users.fetch(discordId)
             : discordClient.channels.fetch(channelId));
@@ -211,11 +189,10 @@ const notifySales = async ({ discordClient, dbClient }) => {
             );
           });
         } catch (error) {
-          console.log(
+          logError(
             `Error handling bid with args ${JSON.stringify({
               ...args,
-            })}:`,
-            error
+            })}: ${error.toString()}`
           );
         }
       }
@@ -293,7 +270,6 @@ const notifySales = async ({ discordClient, dbClient }) => {
         })
         .catch(async () => {
           const { object } = await dbClient.getCollectionFloor({ collection });
-          console.log(`Collection floor from db: ${object}`);
           return object;
         });
       const current = collectionMap[collection];
@@ -308,9 +284,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
   };
 
   const pollEvents = async () => {
-    console.log(`Polling events`);
     const alerts = await refreshAlertTokens();
-    // const { objects: alerts } = await dbClient.getAllAlerts();
     const { objects: currentOffers } = await dbClient.getAllCollectionOffers();
     const collectionMap = toCollectionMap(alerts, currentOffers);
     await updateCollectionFloors(collectionMap);

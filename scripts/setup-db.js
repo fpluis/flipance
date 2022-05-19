@@ -1,4 +1,3 @@
-/* eslint-disable no-multi-str */
 import path from "path";
 import dotenv from "dotenv";
 import {

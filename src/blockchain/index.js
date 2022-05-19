@@ -1,5 +1,4 @@
-/* eslint-disable no-await-in-loop */
-import { access, readFileSync } from "fs";
+import { readFileSync } from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import EventEmitter from "events";
@@ -96,13 +95,11 @@ const getNFTScanToken = async () => {
   )
     .then((res) => res.json())
     .then((result) => {
-      console.log(`Fetch token result: ${JSON.stringify(result)}`);
       const {
         data: { accessToken, expiration },
       } = result;
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getTime() + expiration * 1000);
-      console.log(`New expiry date ${newExpiry.toUTCString()}`);
       NFTScanCache.expiry = newExpiry;
       NFTScanCache.token = accessToken;
       return accessToken;
@@ -120,9 +117,7 @@ export const getAddressNFTs = async (moralisClient, address) =>
       );
     })
     .catch(async () => {
-      console.log(`Error getting address NFTs using moralis`);
       const accessToken = await getNFTScanToken();
-      console.log(`Calling NFTScan with token ${accessToken}`);
       return fetch(
         `https://restapi.nftscan.com/api/v1/getAllNftByUserAddress`,
         {
@@ -141,7 +136,6 @@ export const getAddressNFTs = async (moralisClient, address) =>
       )
         .then((res) => res.json())
         .then((response) => {
-          console.log(`NFTScan response: ${JSON.stringify(response)}`);
           const {
             data: { content },
           } = response;
@@ -150,8 +144,7 @@ export const getAddressNFTs = async (moralisClient, address) =>
               `${nft_creator}/${parseInt(nft_asset_id, 16)}`
           );
         })
-        .catch((error) => {
-          console.log(`Error calling nftscan:`, error);
+        .catch(() => {
           return [];
         });
     });
@@ -159,8 +152,7 @@ export const getAddressNFTs = async (moralisClient, address) =>
 export const getCollectionMetadata = (collection) => {
   const tokenContract = new ethers.Contract(collection, erc721Abi, ethProvider);
   return Promise.all([
-    tokenContract.name().catch((error) => {
-      console.log(`Error getting name of collection ${collection}`, error);
+    tokenContract.name().catch(() => {
       return null;
     }),
   ]).then(([name]) => ({ name }));
@@ -393,24 +385,19 @@ const callLRWithRetries = (endpoint, retries = 1) =>
   fetch(endpoint)
     .then((res) => res.json())
     .then(async (response) => {
-      const { data, message, success, errors } = response;
+      const { data, message, success } = response;
       if (success === true) {
         return data;
       }
 
-      console.log(`Error calling LR: ${message}`);
       if (message === "Too Many Requests" && retries > 0) {
         await sleep(Math.random() * 30 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
       }
 
-      console.log(`Errors calling ${endpoint}:`, errors);
       return [];
     })
     .catch(async (error) => {
-      console.log(
-        `Error calling LR. Current retries: ${retries}. Error code: ${error.code}; retries: ${retries}`
-      );
       if (["ETIMEDOUT", "ECONNRESET"].includes(error.code) && retries > 0) {
         await sleep(Math.random() * 30 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
@@ -433,12 +420,6 @@ export const getCollectionFloor = (collection) =>
     }
 
     const [{ price }] = listings;
-    console.log(
-      `Collection floor for ${collection}: ${price} = ${etherUtils.formatEther(
-        price
-      )}`
-    );
-
     return Number(etherUtils.formatEther(price));
   });
 
@@ -460,14 +441,7 @@ export const pollCollectionOffers = async (
             collectionFloor = 0,
           },
         ]) => {
-          const offers = await getCollectionOffers(collection).catch(
-            (error) => {
-              console.log(
-                `Error getting collection bids for ${collection}`,
-                error
-              );
-            }
-          );
+          const offers = await getCollectionOffers(collection);
           if (offers.length === 0) {
             return;
           }
@@ -793,7 +767,7 @@ const calculateCost = async ({
     return gasEth.add(value);
   }
 
-  // Likely an airdrop
+  // Assume it was gifted
   return ethers.BigNumber.from(0);
 };
 
@@ -814,12 +788,6 @@ export const calculateProfit = async (args) => {
       const received = BigNumber.from(receivedTx.value);
       return etherUtils.formatEther(etherUtils.parseEther(received.sub(cost)));
     }
-  } else {
-    console.log(
-      `Failed to get inner txs for ${
-        args.transactionHash
-      }; Response: ${JSON.stringify({ response })}`
-    );
   }
 
   return null;

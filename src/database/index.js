@@ -86,8 +86,6 @@ export const createDb = async ({
   });
 
   console.log(`Created DB "${dbName}"`);
-  // Restore connect access to clients in case it was revoked
-  // await client.query(`GRANT CONNECT ON DATABASE "${dbName}" TO public`);
   await client.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8'`);
   await client.release();
   return pool.end().then(() => true);
@@ -221,8 +219,6 @@ export const removeDb = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  // Revoke access to other clients so it can be dropped
-  // await client.query(`REVOKE CONNECT ON DATABASE "${dbName}" FROM public;`);
   await client.query(`DROP DATABASE "${dbName}"`);
   await client.release();
   return pool.end();
@@ -416,10 +412,6 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        console.log(
-          `Error inserting user with values ${JSON.stringify(values)}`,
-          error
-        );
         const { constraint } = error;
         return {
           object: null,
@@ -489,11 +481,6 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        console.log(
-          `Error creating alert with props ${JSON.stringify(
-            props
-          )} and values ${JSON.stringify(values)}: ${JSON.stringify(error)}`
-        );
         const { constraint, code, routine } = error;
         return {
           object: null,

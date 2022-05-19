@@ -5,6 +5,7 @@ import { utils } from "ethers";
 import { getAddressNFTs } from "../blockchain/index.js";
 import { MessageActionRow, MessageSelectMenu } from "discord.js";
 import { bold } from "@discordjs/builders";
+import logError from "../log-error.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -43,7 +44,6 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
   }
 
   let { object: user } = await dbClient.getUserByDiscordId({ discordId });
-  console.log(`User by discord id ${discordId}: ${JSON.stringify(user)}`);
   if (user == null) {
     const { object: newUser } = await dbClient.createUser({
       discordId,
@@ -133,12 +133,6 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
       dbClient.getUserAlerts({ discordId }),
       dbClient.getUserAlerts({ discordId: guildId }),
     ]);
-  console.log(
-    `Wallet ${discordId} alerts: ${JSON.stringify(
-      currentAlerts
-    )}; Guild (${guildId}) alerts: ${JSON.stringify(guildAlerts)}.`
-  );
-
   if (currentAlerts.length === 0 && guildAlerts.length === 0) {
     return interaction.editReply({
       content:
@@ -191,7 +185,6 @@ const handleWalletAlert = async ({
   });
 
   let { object: user } = await dbClient.getUserByDiscordId({ discordId });
-  console.log(`User: ${JSON.stringify(user)}`);
   if (user == null) {
     const { object: newUser } = await dbClient.createUser({
       discordId,
@@ -220,9 +213,6 @@ const handleWalletAlert = async ({
   }
 
   const nickname = interaction.options.getString("nickname").trim();
-  console.log(
-    `Supplied alert nickname: "${nickname}" (${nickname.length}) chars`
-  );
   if (nickname != null && !isValidNickname(nickname)) {
     return interaction.editReply({
       content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
@@ -231,14 +221,13 @@ const handleWalletAlert = async ({
   }
 
   const tokens = await getAddressNFTs(moralisClient, address);
-  const { result, alert } = await dbClient.createAlert({
+  const { result } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
     address,
     tokens,
     nickname,
   });
-  console.log(`Create alert result: ${result}; alert ${JSON.stringify(alert)}`);
   switch (result) {
     case "success":
       return discordClient.users.cache
@@ -418,10 +407,6 @@ const getSettings = async (dbClient, interaction) => {
   const alert = interaction.options.getString("alert");
   const address = isValidAddress(alert) ? alert : null;
   const nickname = isValidNickname(alert) ? alert : null;
-  console.log(
-    `Get address with option ${alert}; address: ${address}; nickname ${nickname}`
-  );
-
   if (address != null) {
     const { result, objects: alerts } = await dbClient
       .getUserAlerts({ discordId })
@@ -430,7 +415,6 @@ const getSettings = async (dbClient, interaction) => {
           ({ address: address1 }) => address1 === address
         );
         if (result === "success" && alertByAddress == null) {
-          console.log(`Getting server alerts by address`);
           return dbClient.getUserAlerts({
             discordId: guildId,
           });
@@ -449,7 +433,6 @@ const getSettings = async (dbClient, interaction) => {
       .getAlertsByNickname({ discordId, nickname })
       .then(({ result, objects }) => {
         if (result === "success" && objects.length === 0) {
-          console.log(`Getting server alerts by nickname`);
           return dbClient.getAlertsByNickname({
             discordId: guildId,
             nickname,
@@ -458,9 +441,6 @@ const getSettings = async (dbClient, interaction) => {
 
         return { result, objects };
       });
-    console.log(
-      `Result for nickname ${nickname}: ${result}, ${JSON.stringify(objects)}`
-    );
     return { result, object: objects ? objects[0] : null };
   }
 
@@ -478,20 +458,12 @@ const getSettings = async (dbClient, interaction) => {
 };
 
 const handleSettings = async ({ dbClient, interaction }) => {
-  const {
-    user: { id: discordId },
-  } = interaction;
   await interaction.deferReply({
     content: "Fetching your settings...",
     ephemeral: true,
   });
   const alertOption = interaction.options.getString("alert");
   const { result, object } = await getSettings(dbClient, interaction);
-  console.log(
-    `discord id ${discordId}; Result ${result}; Object: ${JSON.stringify(
-      object
-    )}; alert option: ${JSON.stringify(alertOption)}`
-  );
   switch (result) {
     case "success":
       return interaction.editReply({
@@ -511,9 +483,6 @@ const handleSettings = async ({ dbClient, interaction }) => {
 };
 
 const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
-  const {
-    user: { id: discordId },
-  } = interaction;
   await interaction.deferReply({
     content: "Fetching your preferences...",
     ephemeral: true,
@@ -522,11 +491,6 @@ const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
   const { allowedMarketplaces } = settings || {
     allowedMarketplaces: allMarketplaceIds,
   };
-  console.log(
-    `Allowed marketplaces for user ${discordId}: ${JSON.stringify(
-      allowedMarketplaces
-    )}`
-  );
   const alert = interaction.options.getString("alert");
   const customId = `allowedmarketplaces/${alert}`;
   const row = new MessageActionRow().addComponents(
@@ -550,9 +514,6 @@ const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
 };
 
 const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
-  const {
-    user: { id: discordId },
-  } = interaction;
   await interaction.deferReply({
     content: "Fetching your preferences...",
     ephemeral: true,
@@ -562,9 +523,6 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
     allowedMarketplaces: allEventIds,
   };
   const alert = interaction.options.getString("alert");
-  console.log(
-    `Allowed events for user ${discordId}: ${JSON.stringify(allowedEvents)}`
-  );
   const customId = `allowedevents/${alert}`;
   const row = new MessageActionRow().addComponents(
     new MessageSelectMenu()
@@ -592,7 +550,6 @@ const handleUpdatePreferencesResponse = async (
   object,
   type
 ) => {
-  console.log(`Handle update preferences. Result ${result}`);
   if (result === "success") {
     return interaction.editReply({
       content: `Your preferences have been saved.\n\n${describeSettings({
@@ -776,7 +733,6 @@ const handleSelectMenu = async (args) => {
   } = args;
   const [menuType, alertString] = customId.split("/");
   const alert = alertString === "null" ? null : alertString;
-  console.log(`Menu type ${menuType}; alert ${alert}`);
   switch (menuType) {
     case "allowedevents":
       return handleAllowedEventsPick({ ...args, alert });
@@ -792,7 +748,7 @@ export default async (clients, interaction) => {
     try {
       return await handleCommand(args);
     } catch (error) {
-      console.log(error);
+      logError(`Error handling user command: ${error.toString()}`);
       return Promise.resolve();
     }
   }
@@ -801,7 +757,7 @@ export default async (clients, interaction) => {
     try {
       return await handleSelectMenu(args);
     } catch (error) {
-      console.log(error);
+      logError(`Error handling select menu: ${error.toString()}`);
       return Promise.resolve();
     }
   }

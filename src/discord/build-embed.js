@@ -250,7 +250,6 @@ export default async ({
   }
 
   if (profit) {
-    console.log(`Profit non-null for tx ${transactionHash}: ${profit}`);
     if (Number(profit) > 0) {
       embed.fields.push({
         name: "Profit",
