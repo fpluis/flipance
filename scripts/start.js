@@ -1,13 +1,15 @@
 /* eslint-disable no-await-in-loop */
 import path from "path";
 import dotenv from "dotenv";
+import { readFileSync } from "fs";
 import { Client, Intents } from "discord.js";
 import {
   nftEventEmitter,
   calculateProfit,
   getAddressNFTs,
   pollCollectionOffers,
-} from "../src/blockchain.js";
+  getCollectionFloor,
+} from "../src/blockchain/index.js";
 import logError from "../src/log-error.js";
 import {
   handleInteraction,
@@ -16,9 +18,15 @@ import {
 } from "../src/discord/index.js";
 import sleep from "../src/sleep.js";
 import moralisClient from "moralis/node.js";
-import createDbClient from "../src/database/index.js";
+import { createDbClient } from "../src/database/index.js";
 
 dotenv.config({ path: path.resolve(".env") });
+
+const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
+const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
+
+const allMarketplaceIds = marketplaces.map(({ id }) => id);
+const allEventIds = nftEvents.map(({ id }) => id);
 
 const {
   DISCORD_BOT_TOKEN,
@@ -26,9 +34,11 @@ const {
   MORALIS_SERVER_URL,
   MORALIS_APP_ID,
   MORALIS_MASTER_KEY,
+  MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
 
-const POLL_LR_BIDS_DELAY = 60 * 1000;
+const WAIT_BEFORE_LR_POLL_OFFERS = 60 * 1000;
+const POLL_EVENTS_DELAY = 60 * 1000;
 const POLL_USER_TOKENS_INTERVAL = 5 * 60 * 1000;
 
 const discordClient = new Client({ intents: [Intents.FLAGS.GUILDS] });
@@ -37,10 +47,30 @@ discordClient.login(
   testArg === "test" ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
 );
 
+if (testArg === "test") {
+  console.log(`Starting the client in TEST mode`);
+}
+
 const isAllowedByUserPreferences = (
   { marketplace, saleType, collectionFloor, price },
-  { allowedMarketplaces, allowedEvents, maxOfferFloorDifference }
+  {
+    allowedMarketplaces = allMarketplaceIds,
+    allowedEvents = allEventIds,
+    maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
+  } = {}
 ) => {
+  console.log(
+    `Deciding if notification with ${JSON.stringify({
+      marketplace,
+      saleType,
+      collectionFloor,
+      price,
+    })} is allowed by preferences ${JSON.stringify({
+      allowedMarketplaces,
+      allowedEvents,
+      maxOfferFloorDifference,
+    })}`
+  );
   if (
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(saleType)
@@ -56,10 +86,10 @@ const isAllowedByUserPreferences = (
     const floorDifference = (collectionFloor - price) / collectionFloor;
     console.log(
       `Is price lower than the max offer floor difference? ${floorDifference}, ${maxOfferFloorDifference}, ${
-        floorDifference < maxOfferFloorDifference
+        100 * floorDifference < Number(maxOfferFloorDifference)
       }`
     );
-    return floorDifference < maxOfferFloorDifference;
+    return 100 * floorDifference < Number(maxOfferFloorDifference);
   }
 
   return true;
@@ -73,12 +103,12 @@ const notifySales = async ({ discordClient, dbClient }) => {
       collection: collectionAddress = "",
     } = args;
 
-    const sellerWatchers = await dbClient.getAlertsByAddress(
-      sellerAddress.toLowerCase()
-    );
-    if (sellerWatchers) {
-      sellerWatchers
-        .filter(({ settings }) => isAllowedByUserPreferences(args, settings))
+    const { objects: sellerAlerts } = await dbClient.getAlertsByAddress({
+      address: sellerAddress.toLowerCase(),
+    });
+    if (sellerAlerts) {
+      sellerAlerts
+        .filter((alert) => isAllowedByUserPreferences(args, alert))
         .forEach(async ({ discordId }) => {
           try {
             const profit = await calculateProfit(args);
@@ -101,12 +131,12 @@ const notifySales = async ({ discordClient, dbClient }) => {
         });
     }
 
-    const buyerWatchers = await dbClient.getAlertsByAddress(
-      buyerAddress.toLowerCase()
-    );
-    if (buyerWatchers) {
-      buyerWatchers
-        .filter(({ settings }) => isAllowedByUserPreferences(args, settings))
+    const { objects: buyerAlerts } = await dbClient.getAlertsByAddress({
+      address: buyerAddress.toLowerCase(),
+    });
+    if (buyerAlerts) {
+      buyerAlerts
+        .filter((buyer) => isAllowedByUserPreferences(args, buyer))
         .forEach(async ({ discordId }) => {
           try {
             const discordUser = await discordClient.users.fetch(discordId);
@@ -127,11 +157,11 @@ const notifySales = async ({ discordClient, dbClient }) => {
         });
     }
 
-    const collectionWatchers = await dbClient.getAlertsByAddress(
-      collectionAddress.toLowerCase()
-    );
-    if (collectionWatchers) {
-      collectionWatchers.forEach(async ({ channelId }) => {
+    const { objects: collectionAlerts } = await dbClient.getAlertsByAddress({
+      address: collectionAddress.toLowerCase(),
+    });
+    if (collectionAlerts) {
+      collectionAlerts.forEach(async ({ channelId }) => {
         if (channelId == null) {
           return;
         }
@@ -149,40 +179,72 @@ const notifySales = async ({ discordClient, dbClient }) => {
     }
   };
 
-  const handleOffer = async (bidType, args) => {
-    const { watchers, collection, price, endTime } = args;
+  const handleOffer = async (saleType, args) => {
+    const { watchers, collection, price, endsAt } = args;
+    args.saleType = saleType;
     await dbClient.setCollectionOffer({
       address: collection,
       price,
-      endTime: endTime * 1000,
+      endsAt,
     });
-    const users = await dbClient.getUsers(watchers.map(({ userId }) => userId));
-    watchers.forEach(async ({ userId, tokenIds }) => {
-      const user = users.find(({ userId: userId1 }) => userId === userId1);
-      if (isAllowedByUserPreferences(args, user)) {
+    watchers.forEach(async (watcher) => {
+      const { discordId, channelId, tokenIds, settings } = watcher;
+      if (isAllowedByUserPreferences(args, settings)) {
         try {
-          const discordUser = await discordClient.users.fetch(userId);
-          const embed = await buildEmbed({ args, saleType: bidType, tokenIds });
-          discordUser.send(embed).catch((error) => {
+          console.log(
+            `Notififying user/channel ${discordId}/${channelId} (watcher: ${JSON.stringify(
+              watcher
+            )})`
+          );
+          const target = await (channelId == null
+            ? discordClient.users.fetch(discordId)
+            : discordClient.channels.fetch(channelId));
+          const embed = await buildEmbed({
+            ...args,
+            target: channelId == null ? "user" : "server",
+            saleType,
+            tokenIds,
+          });
+          target.send(embed).catch((error) => {
             logError(
-              `Error sending bid notification to user ${userId}; Error: ${error.toString()}`
+              `Error sending bid notification to ${channelId}/${discordId}; Error: ${error.toString()}`
             );
           });
         } catch (error) {
           console.log(
             `Error handling bid with args ${JSON.stringify({
               ...args,
-            })}: ${error.toString()}`
+            })}:`,
+            error
           );
         }
       }
     });
   };
 
-  const listenToNftBids = async () => {
-    const users = await dbClient.getAllUsers();
-    const collectionMap = Object.entries(users).reduce(
-      (collectionMap, [userId, { tokens }]) => {
+  const refreshAlertTokens = async () => {
+    let index = 0;
+    const { objects: alerts } = await dbClient.getAllAlerts();
+    while (index < alerts) {
+      const [{ id, address, syncedAt }] = alerts[index];
+      if (
+        syncedAt == null ||
+        new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL
+      ) {
+        const tokens = await getAddressNFTs(moralisClient, address);
+        await dbClient.setAlertTokens({ id, tokens });
+        alerts[index].tokens = tokens;
+      }
+
+      index += 1;
+    }
+
+    return alerts;
+  };
+
+  const toCollectionMap = (alerts, offers) => {
+    const collectionMap = alerts.reduce(
+      (collectionMap, { id, tokens, discordId, channelId, ...settings }) => {
         const userCollections = tokens.reduce((collections, token) => {
           const [collection, tokenId] = token.split("/");
           const tokenIds = collections[collection] || [];
@@ -190,32 +252,71 @@ const notifySales = async ({ discordClient, dbClient }) => {
           return collections;
         }, {});
         Object.entries(userCollections).forEach(([collection, tokenIds]) => {
-          const { currentWatchers = [] } = collectionMap[collection] || {};
-          // const { price, endTime } = collectionBids[collection] || {
-          //   price: "0",
-          //   endTime: new Date("1970-01-01").getTime(),
-          // };
+          const { watchers: currentWatchers = [] } =
+            collectionMap[collection] || {};
           collectionMap[collection] = {
-            watchers: currentWatchers.concat([{ userId, tokenIds }]),
+            watchers: currentWatchers.concat([
+              { id, tokenIds, discordId, channelId, settings },
+            ]),
           };
+        });
+        offers.forEach(({ collection, price, endsAt }) => {
+          const current = collectionMap[collection] || {};
+          current.price = price;
+          current.endsAt = endsAt;
+          collectionMap[collection] = current;
         });
         return collectionMap;
       },
       {}
     );
-    const currentOffers = await dbClient.getAllOffers(
-      Object.keys(collectionMap)
-    );
-    currentOffers.forEach(({ collection, price, endTime }) => {
-      collection[collection].price = price;
-      collection[collection].endTime = endTime;
-    });
-    await pollCollectionOffers(Object.entries(collectionMap), handleOffer);
-    await sleep(POLL_LR_BIDS_DELAY);
-    listenToNftBids(dbClient);
+
+    return collectionMap;
   };
 
-  listenToNftBids();
+  const updateCollectionFloors = async (collectionMap, offset = 0) => {
+    const collections = Object.keys(collectionMap).slice(offset, offset + 60);
+    let index = 0;
+    while (index < collections.length) {
+      const collection = collections[index];
+      const collectionFloor = await getCollectionFloor(collection)
+        .then(async (collectionFloor) => {
+          await dbClient.setCollectionFloor({
+            collection,
+            price: collectionFloor,
+          });
+          return collectionFloor;
+        })
+        .catch(async () => {
+          const { object } = await dbClient.getCollectionFloor({ collection });
+          console.log(`Collection floor from db: ${object}`);
+          return object;
+        });
+      const current = collectionMap[collection];
+      current.collectionFloor = collectionFloor;
+      collectionMap[collection] = current;
+      index += 1;
+    }
+
+    return collections.length > 0
+      ? updateCollectionFloors(collectionMap, offset + 60)
+      : collectionMap;
+  };
+
+  const pollEvents = async () => {
+    console.log(`Polling events`);
+    const alerts = await refreshAlertTokens();
+    // const { objects: alerts } = await dbClient.getAllAlerts();
+    const { objects: currentOffers } = await dbClient.getAllCollectionOffers();
+    const collectionMap = toCollectionMap(alerts, currentOffers);
+    await updateCollectionFloors(collectionMap);
+    await sleep(WAIT_BEFORE_LR_POLL_OFFERS);
+    await pollCollectionOffers(collectionMap, handleOffer);
+    await sleep(POLL_EVENTS_DELAY);
+    pollEvents();
+  };
+
+  pollEvents();
 
   const eventEmitter = nftEventEmitter();
   ["acceptAsk", "acceptOffer", "settleAuction", "bid", "offer"].forEach(
@@ -236,27 +337,6 @@ const notifySales = async ({ discordClient, dbClient }) => {
   );
 };
 
-const pollUserTokens = async (dbClient) => {
-  let index = 0;
-  const users = await dbClient.getAllUsers();
-  const entries = Object.entries(users);
-  while (index < entries) {
-    const [id, { addresses, syncedAt }] = entries[index];
-    if (
-      syncedAt == null ||
-      new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL
-    ) {
-      const tokens = await getAddressNFTs(moralisClient, addresses);
-      await dbClient.setUserTokens({ id, tokens });
-    }
-
-    index += 1;
-  }
-
-  await sleep(POLL_USER_TOKENS_INTERVAL);
-  pollUserTokens(dbClient);
-};
-
 discordClient.once("ready", async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   const dbClient = await createDbClient();
@@ -269,7 +349,6 @@ discordClient.once("ready", async () => {
   discordClient.on("interactionCreate", (interaction) => {
     handleInteraction({ discordClient, moralisClient, dbClient }, interaction);
   });
-  pollUserTokens(dbClient);
 });
 
 discordClient.on("guildCreate", (guild) => {

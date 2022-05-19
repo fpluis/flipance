@@ -10,8 +10,8 @@ import {
   BigNumber,
 } from "ethers";
 import fetch from "node-fetch";
-import logError from "./log-error.js";
-import sleep from "./sleep.js";
+import logError from "../log-error.js";
+import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -79,25 +79,17 @@ const parseAddressFromLogs = (address) => {
   return address;
 };
 
-export const getAddressNFTs = async (moralisClient, addresses) => {
-  let index = 0;
-  let tokens = [];
-  while (index < addresses.length) {
-    const address = addresses[index];
-    console.log(
-      `Adding tokens from ${address} to current ${JSON.stringify(tokens)}`
-    );
-    const { result: newTokens } = await moralisClient.Web3API.account.getNFTs({
+export const getAddressNFTs = async (moralisClient, address) => {
+  const { result: newTokens } = await moralisClient.Web3API.account
+    .getNFTs({
       address,
+    })
+    .catch(() => {
+      return { result: [] };
     });
-    const asStrings = newTokens.map(
-      ({ token_address, token_id }) => `${token_address}/${token_id}`
-    );
-    tokens = tokens.concat(asStrings);
-    index += 1;
-  }
-
-  return tokens;
+  return newTokens.map(
+    ({ token_address, token_id }) => `${token_address}/${token_id}`
+  );
 };
 
 export const getCollectionMetadata = (collection) => {
@@ -344,7 +336,7 @@ const callLRWithRetries = (endpoint, retries = 3) =>
 
       console.log(`Error calling LR: ${message}`);
       if (message === "Too Many Requests") {
-        await sleep(Math.random() * 60 * 1000);
+        await sleep(Math.random() * 30 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
       }
 
@@ -352,45 +344,58 @@ const callLRWithRetries = (endpoint, retries = 3) =>
     })
     .catch(async (error) => {
       console.log(
-        `Error calling LR. Error code: ${error.code}; retries: ${retries}`
+        `Error calling LR. Current retries: ${retries}. Error code: ${error.code}; retries: ${retries}`
       );
       if (["ETIMEDOUT", "ECONNRESET"].includes(error.code) && retries > 0) {
-        await sleep(Math.random() * 60 * 1000);
+        await sleep(Math.random() * 30 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
       }
 
       return [];
     });
 
-const getCollectionOffers = (collection) =>
+export const getCollectionOffers = (collection) =>
   callLRWithRetries(
     `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=1&status[]=VALID&sort=PRICE_DESC`
   );
 
-const getCollectionFloor = (collection) =>
+export const getCollectionFloor = (collection) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=1&status[]=VALID&sort=PRICE_DESC`
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=1&status[]=VALID&sort=PRICE_ASC`,
+    1
   ).then((listings) => {
     if (listings.length === 0) {
       return null;
     }
 
     const [{ price }] = listings;
-    return price;
+    console.log(
+      `Collection floor for ${collection}: ${price} = ${etherUtils.formatEther(
+        price
+      )}`
+    );
+
+    return Number(etherUtils.formatEther(price));
   });
 
 export const pollCollectionOffers = async (
-  collections,
+  collectionMap,
   emit,
   currentBids = []
 ) => {
+  const collections = Object.entries(collectionMap);
   const bids = await Promise.all(
     collections
       .slice(0, 60)
       .map(
         async ([
           collection,
-          { price: currentHighest, endTime: currentEndTime, watchers },
+          {
+            price: currentHighest = 0,
+            endsAt: currentEndsAt,
+            watchers,
+            collectionFloor = 0,
+          },
         ]) => {
           const bids = await getCollectionOffers(collection).catch((error) => {
             console.log(
@@ -403,20 +408,26 @@ export const pollCollectionOffers = async (
           }
 
           const [topBid] = bids;
-          const { hash, price, endTime, signer } = topBid;
-
+          const { hash, price, endTime: endsAt, signer } = topBid;
+          const currentHighestInWei = etherUtils.parseEther(
+            `${currentHighest}`
+          );
+          console.log(
+            `Collection ${collection}. Top bid: ${price}; current highest: ${currentHighestInWei}; ends at ${new Date(
+              endsAt * 1000
+            )}`
+          );
           if (
-            BigNumber.from(price).gt(BigNumber.from(currentHighest)) ||
-            currentEndTime < new Date().getTime()
+            BigNumber.from(price).gt(BigNumber.from(currentHighestInWei)) ||
+            currentEndsAt < new Date().getTime()
           ) {
-            const collectionFloor = await getCollectionFloor(collection);
             emit("offer", {
               ...topBid,
               watchers,
               collectionFloor,
               price: etherUtils.formatEther(price),
               buyer: signer,
-              endTime: endTime * 1000,
+              endsAt: endsAt * 1000,
               bidHash: hash,
               marketplace: "looksRare",
               collection,

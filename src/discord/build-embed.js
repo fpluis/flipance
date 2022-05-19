@@ -125,8 +125,9 @@ export default async ({
   profit,
   collectionFloor,
   tokenIds,
+  target,
 }) => {
-  const price = `${priceEth} ETH`;
+  const priceString = `${priceEth} ETH`;
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash)
     : Promise.resolve({}));
@@ -139,44 +140,53 @@ export default async ({
   if (saleType === "offer") {
     const priceDescription =
       collectionFloor == null
-        ? `${price}`
-        : collectionFloor === price
-        ? `${price} (at the collection's floor price)`
-        : collectionFloor < price
-        ? `${price} (${
-            (price - collectionFloor) / price
-          }% over the floor price)`
-        : `${price} (${
-            (collectionFloor - price) / collectionFloor
-          }% below the floor price)`;
-    const firstSentence =
-      collectionMetadata.name && collectionMetadata.name.length > 0
-        ? `You received a collection offer of ${priceDescription} on all your ${collectionMetadata.name} (you have ${tokenIds.length}) at LooksRare!`
-        : `You received a collection offer of ${priceDescription} on ${tokenIds.length} of your items at LooksRare!`;
-    description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+        ? `${priceString}`
+        : collectionFloor === priceEth
+        ? `${priceString} (at the collection's floor price)`
+        : collectionFloor < priceEth
+        ? `${priceString} (${Number(
+            (100 * (priceEth - collectionFloor)) / priceEth
+          ).toFixed(2)}% over the floor price)`
+        : `${priceString} (${Number(
+            (100 * (collectionFloor - priceEth)) / collectionFloor
+          ).toFixed(2)}% below the floor price)`;
+    if (target === "user") {
+      const firstSentence =
+        collectionMetadata.name && collectionMetadata.name.length > 0
+          ? `You received a collection offer of ${priceDescription} on all your ${collectionMetadata.name} NFTs (you have ${tokenIds.length}) at LooksRare!`
+          : `You received a collection offer of ${priceDescription} on ${tokenIds.length} of your items at LooksRare!`;
+      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    } else {
+      const firstSentence =
+        collectionMetadata.name && collectionMetadata.name.length > 0
+          ? `Someone made a collection offer of ${priceDescription} on all ${collectionMetadata.name} NFTs at LooksRare!`
+          : `Someone made a collection offer of ${priceDescription} on all NFTs at LooksRare!`;
+      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    }
+
     title = "New offer!";
-    url = `https://looksrare.org/collections/${collection}/${tokenId}`;
+    url = `https://looksrare.org/collections/${collection}/${tokenIds[0]}`;
   } else if (isBuyer) {
     description =
       saleType === "acceptOffer"
-        ? `You accepted an offer on ${marketplace} for ${price}`
+        ? `You accepted an offer on ${marketplace} for ${priceString}`
         : saleType === "acceptAsk"
-        ? `You bought an NFT on ${marketplace} for ${price}`
-        : `You won an auction on ${marketplace} for ${price}`;
+        ? `You bought an NFT on ${marketplace} for ${priceString}`
+        : `You won an auction on ${marketplace} for ${priceString}`;
   } else if (isSeller) {
     description =
       saleType === "acceptOffer"
-        ? `Your offer was accepted on ${marketplace} for ${price}`
+        ? `Your offer was accepted on ${marketplace} for ${priceString}`
         : saleType === "acceptAsk"
-        ? `You sold your NFT on ${marketplace} for ${price}`
-        : `You sold an item in auction on ${marketplace} for ${price}`;
+        ? `You sold your NFT on ${marketplace} for ${priceString}`
+        : `You sold an item in auction on ${marketplace} for ${priceString}`;
   } else {
     description =
       saleType === "acceptOffer"
-        ? `Offer accepted on ${marketplace} for ${price}`
+        ? `Offer accepted on ${marketplace} for ${priceString}`
         : saleType === "acceptAsk"
-        ? `NFT bought directly on ${marketplace} for ${price}`
-        : `Auction won on ${marketplace} for ${price}`;
+        ? `NFT bought directly on ${marketplace} for ${priceString}`
+        : `Auction won on ${marketplace} for ${priceString}`;
   }
 
   const embed = {
