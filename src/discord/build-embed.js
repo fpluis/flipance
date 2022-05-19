@@ -120,12 +120,13 @@ export default async ({
   buyer: buyerAddress,
   price: priceEth,
   collection,
-  tokenId,
   metadataUri,
   profit,
   collectionFloor,
   tokenIds,
+  tokenId = tokenIds[0],
   target,
+  endsAt,
 }) => {
   const priceString = `${priceEth} ETH`;
   const metadata = await (metadataUri
@@ -133,7 +134,6 @@ export default async ({
     : Promise.resolve({}));
   const collectionMetadata = await getCollectionMetadata(collection);
   const marketplace = marketplaceIdToLink(marketplaceId);
-
   let description;
   let title = "New sale!";
   let url = `https://etherscan.io/tx/${transactionHash}`;
@@ -165,7 +165,7 @@ export default async ({
     }
 
     title = "New offer!";
-    url = `https://looksrare.org/collections/${collection}/${tokenIds[0]}`;
+    url = `https://looksrare.org/collections/${collection}/${tokenId}`;
   } else if (isBuyer) {
     description =
       saleType === "acceptOffer"
@@ -228,6 +228,13 @@ export default async ({
         sellerAddress
       )}](https://etherscan.io/address/${sellerAddress})`,
       inline: true,
+    });
+  }
+
+  if (saleType === "offer" && endsAt != null) {
+    embed.fields.push({
+      name: "Valid until",
+      value: new Date(endsAt).toUTCString(),
     });
   }
 
