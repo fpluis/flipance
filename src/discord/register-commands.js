@@ -11,6 +11,7 @@ const {
   DISCORD_CLIENT_ID_TEST,
   DISCORD_BOT_TOKEN,
   DISCORD_BOT_TOKEN_TEST,
+  MAX_NICKNAME_LENGTH = 50,
 } = process.env;
 const [, , testArg] = process.argv;
 
@@ -33,7 +34,11 @@ const commands = [
         .setRequired(true)
     )
     .addStringOption((option) =>
-      option.setName("nickname").setDescription("Wallet's nickname")
+      option
+        .setName("nickname")
+        .setDescription(
+          `Wallet's nickname (1-${MAX_NICKNAME_LENGTH} characters, no spaces)`
+        )
     ),
   new SlashCommandBuilder()
     .setName("collectionalert")
@@ -47,37 +52,52 @@ const commands = [
         .setRequired(true)
     )
     .addStringOption((option) =>
-      option.setName("nickname").setDescription("Collection's nickname")
+      option
+        .setName("nickname")
+        .setDescription(
+          `Collection's  nickname (1-${MAX_NICKNAME_LENGTH} characters, no spaces)`
+        )
     ),
   new SlashCommandBuilder()
     .setName("deletecollectionalert")
-    .setDescription("Deletes the server's alert for the specified collection")
+    .setDescription(
+      "Deletes the server's alert for the specified collection address or nickname"
+    )
     .addStringOption((option) =>
-      option
-        .setName("address")
-        .setDescription("Address being watched")
-        .setRequired(true)
+      option.setName("address").setDescription("Address being watched")
+    )
+    .addStringOption((option) =>
+      option.setName("nickname").setDescription(`Wallet's nickname`)
     ),
   new SlashCommandBuilder()
     .setName("deletewalletalert")
-    .setDescription("Deletes your alert for the specified wallet")
+    .setDescription(
+      "Deletes your alert for the specified address or wallet nickname"
+    )
     .addStringOption((option) =>
-      option
-        .setName("address")
-        .setDescription("Address being watched")
-        .setRequired(true)
+      option.setName("address").setDescription("Address being watched")
+    )
+    .addStringOption((option) =>
+      option.setName("nickname").setDescription(`Collection's nickname`)
     ),
   new SlashCommandBuilder()
     .setName("settings")
-    .setDescription("Display your current settings"),
+    .setDescription("Display your current settings")
+    .addStringOption((option) =>
+      option
+        .setName("alert")
+        .setDescription(
+          "Alert nickname or address. Leave empty to see your account-wide settings"
+        )
+    ),
   new SlashCommandBuilder()
     .setName("setallowedmarketplaces")
     .setDescription("Choose the marketplaces you wish to receive alerts from")
     .addStringOption((option) =>
       option
-        .setName("wallet")
+        .setName("alert")
         .setDescription(
-          "Wallet name or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
         )
     ),
   new SlashCommandBuilder()
@@ -85,9 +105,9 @@ const commands = [
     .setDescription("Choose the NFT events you wish to be alerted of")
     .addStringOption((option) =>
       option
-        .setName("wallet")
+        .setName("alert")
         .setDescription(
-          "Wallet name or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
         )
     ),
   new SlashCommandBuilder()
@@ -103,9 +123,9 @@ const commands = [
     )
     .addStringOption((option) =>
       option
-        .setName("wallet")
+        .setName("alert")
         .setDescription(
-          "Wallet name or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
         )
     ),
 ].map((command) => command.toJSON());
