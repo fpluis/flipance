@@ -261,7 +261,11 @@ const notifySales = async ({ discordClient, dbClient }) => {
           };
         });
         offers.forEach(({ collection, price, endsAt }) => {
-          const current = collectionMap[collection] || {};
+          const current = collectionMap[collection];
+          if (current == null) {
+            return;
+          }
+
           current.price = price;
           current.endsAt = endsAt;
           collectionMap[collection] = current;
@@ -311,7 +315,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
     const collectionMap = toCollectionMap(alerts, currentOffers);
     await updateCollectionFloors(collectionMap);
     await sleep(WAIT_BEFORE_LR_POLL_OFFERS);
-    await pollCollectionOffers(collectionMap, handleOffer);
+    await pollCollectionOffers(Object.entries(collectionMap), handleOffer);
     await sleep(POLL_EVENTS_DELAY);
     pollEvents();
   };
@@ -341,11 +345,15 @@ discordClient.once("ready", async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   const dbClient = await createDbClient();
   notifySales({ discordClient, dbClient });
-  await moralisClient.start({
-    serverUrl: MORALIS_SERVER_URL,
-    appId: MORALIS_APP_ID,
-    masterKey: MORALIS_MASTER_KEY,
-  });
+  await moralisClient
+    .start({
+      serverUrl: MORALIS_SERVER_URL,
+      appId: MORALIS_APP_ID,
+      masterKey: MORALIS_MASTER_KEY,
+    })
+    .catch(() => {
+      console.log(`Invalid/missing Moralis credentials. Starting without it`);
+    });
   discordClient.on("interactionCreate", (interaction) => {
     handleInteraction({ discordClient, moralisClient, dbClient }, interaction);
   });
