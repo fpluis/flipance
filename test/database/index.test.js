@@ -1,3 +1,6 @@
+import path from "path";
+import { readFileSync } from "fs";
+import dotenv from "dotenv";
 import {
   isDbCreated,
   createDb,
@@ -6,6 +9,17 @@ import {
   clearDb,
   removeDb,
 } from "../../src/database/index.js";
+
+dotenv.config({ path: path.resolve(".env") });
+
+const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
+const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
+
+const allMarketplaceIds = marketplaces.map(({ id }) => id);
+const allEventIds = nftEvents.map(({ id }) => id);
+
+const { MAX_NICKNAME_LENGTH = 50, MAX_OFFER_FLOOR_DIFFERENCE = 15 } =
+  process.env;
 
 const dbName = `flipance-test-${new Date().toISOString().slice(0, 19)}`;
 
@@ -41,16 +55,16 @@ beforeAll(() => setUpTestDatabase());
 afterAll(() => tearDownDatabase(), 10000);
 
 const discordId1 = "1234";
-const addresses1 = ["0x1234"];
-// The token format is collection/tokenId
-const tokens1 = ["0x6789/1"];
+const address1 = "0x1234";
 
-const discordId2 = "5678";
-const addresses2 = ["0x5678"];
-const tokens2 = ["0x6789/2", "0x8888/8"];
+// The token format is collection/tokenId
+const tokens1 = ["0x6789/2", "0x8888/8"];
 
 const collection1 = "0x6789";
 const channelId1 = "111111";
+
+const discordId2 = "5678";
+const address2 = "0x5678";
 
 beforeEach(() => {
   return clearDb({ dbName });
@@ -68,8 +82,7 @@ test("createUser with only the discordId", async () => {
   });
   expect(result).toBe("success");
   expect(object).toMatchObject({
-    addresses: [],
-    tokens: [],
+    discordId: discordId1,
   });
 });
 
@@ -77,20 +90,14 @@ test("createUser with a duplicate discordId", async () => {
   const { result: firstCreateResult, object: firstUser } =
     await dbClient.createUser({
       discordId: discordId1,
-      addresses: addresses1,
-      tokens: tokens1,
     });
   expect(firstCreateResult).toBe("success");
   expect(firstUser).toMatchObject({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result: secondCreateResult, object: secondUser } =
     await dbClient.createUser({
       discordId: discordId1,
-      addresses: addresses2,
-      tokens: tokens2,
     });
   expect(secondCreateResult).toBe("already-exists");
   expect(secondUser).toBe(null);
@@ -113,8 +120,6 @@ test("getUserByDiscordId with no users", async () => {
 test("getUserByDiscordId with no matching user", async () => {
   await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result, object: user } = await dbClient.getUserByDiscordId({
     discordId: discordId2,
@@ -126,8 +131,6 @@ test("getUserByDiscordId with no matching user", async () => {
 test("getUserByDiscordId with a matching user", async () => {
   await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result, object: user } = await dbClient.getUserByDiscordId({
     discordId: discordId1,
@@ -135,305 +138,87 @@ test("getUserByDiscordId with a matching user", async () => {
   expect(result).toBe("success");
   expect(user).toMatchObject({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
 });
 
-test("getAllUsers with no users", async () => {
-  const { result, objects: users } = await dbClient.getAllUsers();
+test("getAllAlerts with no alerts", async () => {
+  const { result, objects: alerts } = await dbClient.getAllAlerts();
   expect(result).toBe("success");
-  expect(users).toMatchObject([]);
+  expect(alerts).toMatchObject([]);
 });
 
-test("getAllUsers after creating one user on the database", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const { result, objects: users } = await dbClient.getAllUsers();
-  expect(result).toBe("success");
-  expect(users.length).toBe(1);
-  expect(users[0]).toMatchObject({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-});
-
-test("getAllUsers after creating two users on the database", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  await dbClient.createUser({
-    discordId: discordId2,
-    addresses: addresses2,
-    tokens: tokens2,
-  });
-  const { result, objects: users } = await dbClient.getAllUsers();
-  expect(result).toBe("success");
-  expect(users.length).toBe(2);
-  expect(users[0].id).not.toBe(users[1].id);
-});
-
-test("getUsers with no arguments", async () => {
-  const { result, objects: users } = await dbClient.getUsers();
-  expect(result).toBe("missing-arguments");
-  expect(users).toMatchObject([]);
-});
-
-test("getUsers with an empty array", async () => {
-  const { result, objects: users } = await dbClient.getUsers({ ids: [] });
-  expect(result).toBe("success");
-  expect(users).toMatchObject([]);
-});
-
-test("getUsers with one matching user on the database", async () => {
+test("getAllAlerts after creating one alert on the database", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
-  const { objects: users } = await dbClient.getUsers({ ids: [user.id] });
-  console.log(
-    `Users found for ids ${JSON.stringify([user.id])}: ${JSON.stringify(users)}`
-  );
-  expect(users.length).toBe(1);
-  expect(users[0]).toMatchObject({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
   });
-});
-
-test("getUsers with two matching users on the database", async () => {
-  const { object: firstUser } = await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const { object: secondUser } = await dbClient.createUser({
-    discordId: discordId2,
-    addresses: addresses2,
-    tokens: tokens2,
-  });
-  const { objects: users } = await dbClient.getUsers({
-    ids: [firstUser.id, secondUser.id],
-  });
-  expect(users.length).toBe(2);
-  expect(users[0].id).not.toBe(users[1].id);
-});
-
-test("getUsers with one of two matching users on the database", async () => {
-  const { object: firstUser } = await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  await dbClient.createUser({
-    discordId: discordId2,
-    addresses: addresses2,
-    tokens: tokens2,
-  });
-  const { objects: users } = await dbClient.getUsers({
-    ids: [firstUser.id, 1237123],
-  });
-  expect(users.length).toBe(1);
-  expect(users[0].id).toBe(firstUser.id);
-});
-
-test("addUserAddress without arguments", async () => {
-  const { result, object: user } = await dbClient.addUserAddress();
-  expect(result).toBe("missing-arguments");
-  expect(user).toBe(null);
-});
-
-test("addUserAddress with a missing user", async () => {
-  const newAddresses = ["0x4321"];
-  const newTokens = ["0x6789/2"];
-  const { result: userUpdateResult } = await dbClient.addUserAddress({
-    discordId: discordId1,
-    addresses: newAddresses,
-    tokens: newTokens,
-  });
-  expect(userUpdateResult).toBe("missing-user");
-  const { result: getUserResult } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(getUserResult).toBe("missing-user");
-});
-
-test("addUserAddress with an address and no tokens", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const newAddresses = ["0x4321"];
-  const { result: userWasUpdated } = await dbClient.addUserAddress({
-    discordId: discordId1,
-    addresses: newAddresses,
-  });
-  expect(userWasUpdated).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser.addresses).toMatchObject([...addresses1, ...newAddresses]);
-  expect(updatedUser.tokens).toMatchObject(tokens1);
-});
-
-test("addUserAddress with an address and tokens", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const newAddresses = ["0x4321"];
-  const newTokens = ["0x6789/2"];
-  const { result: userWasUpdated } = await dbClient.addUserAddress({
-    discordId: discordId1,
-    addresses: newAddresses,
-    tokens: newTokens,
-  });
-  expect(userWasUpdated).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser.addresses).toMatchObject([...addresses1, ...newAddresses]);
-  expect(updatedUser.tokens).toMatchObject([...tokens1, ...newTokens]);
-});
-
-test("addUserAddress with duplicate address and tokens", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const newAddresses = [...addresses1, "0x4321"];
-  const newTokens = [...tokens1, "0x6789/2"];
-  const { result: userWasUpdated } = await dbClient.addUserAddress({
-    discordId: discordId1,
-    addresses: newAddresses,
-    tokens: newTokens,
-  });
-  expect(userWasUpdated).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser.addresses).toMatchObject([...addresses1, ...newAddresses]);
-  expect(updatedUser.tokens).toMatchObject([...tokens1, ...newTokens]);
-});
-
-test("deleteUserAddresses with a missing user", async () => {
-  const { result } = await dbClient.deleteUserAddresses({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: [],
-  });
-  expect(result).toBe("missing-user");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser).toBe(null);
-});
-
-test("deleteUserAddresses without arguments", async () => {
-  const { result, object: updatedUser } = await dbClient.deleteUserAddresses();
-  expect(result).toBe("missing-arguments");
-  expect(updatedUser).toBe(null);
-});
-
-test("deleteUserAddresses with an existing user", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const { result } = await dbClient.deleteUserAddresses({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
+  const { result, objects: alerts } = await dbClient.getAllAlerts();
   expect(result).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
+  expect(alerts.length).toBe(1);
+  expect(alerts[0]).toMatchObject({
+    userId: user.id,
+    address: address1,
   });
-  expect(updatedUser.addresses).toMatchObject([]);
-  expect(updatedUser.tokens).toMatchObject([]);
 });
 
-test("deleteUserAddresses with an address that the user doesn't have", async () => {
-  await dbClient.createUser({
+test("getAllAlerts after creating two alerts", async () => {
+  const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
-  const { result } = await dbClient.deleteUserAddresses({
-    discordId: discordId1,
-    addresses: addresses2,
-    tokens: tokens1,
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
   });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "collection",
+    address: address2,
+  });
+  const { result, objects: alerts } = await dbClient.getAllAlerts();
+  console.log(`Alerts: ${JSON.stringify(alerts)}`);
   expect(result).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser.addresses).toMatchObject(addresses1);
-  expect(updatedUser.tokens).toMatchObject([]);
+  expect(alerts.length).toBe(2);
+  expect(alerts[0].id).not.toBe(alerts[1].id);
 });
 
-test("deleteUserAddresses with an existing user but without the tokens", async () => {
-  await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
-  });
-  const { result } = await dbClient.deleteUserAddresses({
-    discordId: discordId1,
-    addresses: addresses1,
-    tokens: [],
-  });
-  expect(result).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
-    discordId: discordId1,
-  });
-  expect(updatedUser.addresses).toMatchObject([]);
-  expect(updatedUser.tokens).toMatchObject(tokens1);
-});
-
-test("setUserTokens without arguments", async () => {
-  const { result, object } = await dbClient.setUserTokens();
+test("setAlertTokens without arguments", async () => {
+  const { result, object } = await dbClient.setAlertTokens();
   expect(result).toBe("missing-arguments");
   expect(object).toBe(null);
 });
 
-test("setUserTokens with a missing user", async () => {
-  const { result } = await dbClient.setUserTokens({
+test("setAlertTokens with a missing alert", async () => {
+  const { result } = await dbClient.setAlertTokens({
     id: 0,
-    tokens: tokens2,
-  });
-  expect(result).toBe("missing-user");
-  const { objects: users } = await dbClient.getUsers({ ids: [0] });
-  expect(users.length).toBe(0);
-});
-
-test("setUserTokens on an existing user", async () => {
-  const { object: user } = await dbClient.createUser({
-    discordId: discordId1,
-    addresses: addresses1,
     tokens: tokens1,
   });
-  const { result } = await dbClient.setUserTokens({
-    id: user.id,
-    tokens: tokens2,
-  });
-  expect(result).toBe("success");
-  const { object: updatedUser } = await dbClient.getUserByDiscordId({
+  expect(result).toBe("missing-alert");
+});
+
+test("setAlertTokens on an existing alert", async () => {
+  const { object: user } = await dbClient.createUser({
     discordId: discordId1,
   });
-  expect(updatedUser.tokens).toMatchObject(tokens2);
+  const { object: alert } = await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+  });
+  expect(alert.tokens).toMatchObject([]);
+  const { result } = await dbClient.setAlertTokens({
+    id: alert.id,
+    tokens: tokens1,
+  });
+  expect(result).toBe("success");
+  const { objects: alerts } = await dbClient.getAlertsByAddress({
+    address: address1,
+  });
+  expect(alerts[0].tokens).toMatchObject(tokens1);
 });
 
 test("setMaxFloorDifference without arguments", async () => {
@@ -457,8 +242,6 @@ test("setMaxFloorDifference with a missing user", async () => {
 test("setMaxFloorDifference on an existing user", async () => {
   await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result } = await dbClient.setMaxFloorDifference({
     discordId: discordId1,
@@ -471,26 +254,49 @@ test("setMaxFloorDifference on an existing user", async () => {
   expect(updatedUser.maxOfferFloorDifference).toBe(10);
 });
 
-test("setMaxFloorDifference on an existing alert", async () => {
+test("setMaxFloorDifference on an existing alert by address", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
+  });
+  const { object } = await dbClient.setMaxFloorDifference({
+    discordId: discordId1,
+    address: address1,
+    maxOfferFloorDifference: 10,
+  });
+  console.log(`New settings: ${JSON.stringify(object)}`);
+  const {
+    objects: [alert],
+  } = await dbClient.getAlertsByAddress({ address: address1 });
+  console.log(
+    `Alert after setting max floor diff to 10: ${JSON.stringify(alert)}`
+  );
+  expect(alert.maxOfferFloorDifference).toBe(10);
+});
+
+test("setMaxFloorDifference on an existing alert using the nickname", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: "test",
   });
   await dbClient.setMaxFloorDifference({
     discordId: discordId1,
-    address: addresses1[0],
-    maxOfferFloorDifference: 10,
+    nickname: "test",
+    maxOfferFloorDifference: 40,
   });
   const {
     objects: [alert],
-  } = await dbClient.getAlertsByAddress({ address: addresses1[0] });
-  expect(alert.maxOfferFloorDifference).toBe(10);
+  } = await dbClient.getAlertsByAddress({ address: address1 });
+  expect(alert.maxOfferFloorDifference).toBe(40);
 });
 
 test("setAllowedEvents without arguments", async () => {
@@ -513,43 +319,61 @@ test("setAllowedEvents with a missing user", async () => {
 });
 
 test("setAllowedEvents on an existing user", async () => {
-  const { object: user } = await dbClient.createUser({
+  await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result } = await dbClient.setAllowedEvents({
     discordId: discordId1,
     allowedEvents: ["offer", "placeBid", "acceptAsk"],
   });
   expect(result).toBe("success");
-  const {
-    objects: [updatedUser],
-  } = await dbClient.getUsers({ ids: [user.id] });
+  const { object: updatedUser } = await dbClient.getUserByDiscordId({
+    discordId: discordId1,
+  });
   expect(updatedUser.allowedEvents).toEqual(["offer", "placeBid", "acceptAsk"]);
 });
 
 test("setAllowedEvents on an existing alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result } = await dbClient.setAllowedEvents({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
     allowedEvents: ["offer", "placeBid", "acceptAsk"],
   });
   expect(result).toBe("success");
   const {
     objects: [alert],
-  } = await dbClient.getAlertsByAddress({ address: addresses1[0] });
+  } = await dbClient.getAlertsByAddress({ address: address1 });
   expect(alert.allowedEvents).toEqual(["offer", "placeBid", "acceptAsk"]);
+});
+
+test("setAllowedEvents on an existing alert using the nickname", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: "test",
+  });
+  const { result } = await dbClient.setAllowedEvents({
+    discordId: discordId1,
+    nickname: "test",
+    allowedEvents: ["offer"],
+  });
+  expect(result).toBe("success");
+  const {
+    objects: [alert],
+  } = await dbClient.getAlertsByAddress({ address: address1 });
+  expect(alert.allowedEvents).toEqual(["offer"]);
 });
 
 test("setAllowedMarketplaces without arguments", async () => {
@@ -565,24 +389,24 @@ test("setAllowedMarketplaces with a missing user", async () => {
     allowedMarketplaces: ["rarible", "openSea", "looksRare"],
   });
   expect(result).toBe("missing-user");
-  const { objects: users } = await dbClient.getUsers({ ids: [0] });
-  expect(users).toMatchObject([]);
+  const { object: user } = await dbClient.getUserByDiscordId({
+    discordId: discordId1,
+  });
+  expect(user).toBe(null);
 });
 
 test("setAllowedMarketplaces on an existing user", async () => {
-  const { object: user } = await dbClient.createUser({
+  await dbClient.createUser({
     discordId: discordId1,
-    addresses: addresses1,
-    tokens: tokens1,
   });
   const { result } = await dbClient.setAllowedMarketplaces({
     discordId: discordId1,
     allowedMarketplaces: ["rarible", "openSea", "looksRare"],
   });
   expect(result).toBe("success");
-  const {
-    objects: [updatedUser],
-  } = await dbClient.getUsers({ ids: [user.id] });
+  const { object: updatedUser } = await dbClient.getUserByDiscordId({
+    discordId: discordId1,
+  });
   expect(updatedUser.allowedMarketplaces).toEqual([
     "rarible",
     "openSea",
@@ -593,28 +417,48 @@ test("setAllowedMarketplaces on an existing user", async () => {
 test("setAllowedMarketplaces on an existing alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result } = await dbClient.setAllowedMarketplaces({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
     allowedMarketplaces: ["rarible", "openSea", "looksRare"],
   });
   expect(result).toBe("success");
   const {
     objects: [alert],
-  } = await dbClient.getAlertsByAddress({ address: addresses1[0] });
+  } = await dbClient.getAlertsByAddress({ address: address1 });
   expect(alert.allowedMarketplaces).toEqual([
     "rarible",
     "openSea",
     "looksRare",
   ]);
+});
+
+test("setAllowedMarketplaces on an existing alert using the nickname", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: "test",
+  });
+  const { result } = await dbClient.setAllowedMarketplaces({
+    discordId: discordId1,
+    nickname: "test",
+    allowedMarketplaces: ["openSea"],
+  });
+  expect(result).toBe("success");
+  const {
+    objects: [alert],
+  } = await dbClient.getAlertsByAddress({ address: address1 });
+  expect(alert.allowedMarketplaces).toEqual(["openSea"]);
 });
 
 test("setCollectionOffer without arguments", async () => {
@@ -688,11 +532,10 @@ test("createAlert with a missing user", async () => {
 });
 
 test("createAlert with a collection alert", async () => {
-  const { object: user } = await dbClient.createUser({
+  const { result: createUserResult, object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
+  expect(createUserResult).toBe("success");
   const { result, object: alert } = await dbClient.createAlert({
     userId: user.id,
     channelId: channelId1,
@@ -710,8 +553,6 @@ test("createAlert with a collection alert", async () => {
 test("createAlert with a collection alert with nickname and verify it is correct with getAlertsByAddress", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
@@ -735,59 +576,68 @@ test("createAlert with a collection alert with nickname and verify it is correct
 test("createAlert with a wallet alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   const { object: alert } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   expect(alert).toMatchObject({
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
 });
 
 test("createAlert with a wallet alert including the nickname", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   const { object: alert } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
   });
   expect(alert).toMatchObject({
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
   });
+});
+
+test("createAlert with a wallet alert using a nickname that is too long", async () => {
+  const longNickname = new Array(Number(MAX_NICKNAME_LENGTH) + 2).join("a");
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  const { result, object: alert } = await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: longNickname,
+  });
+  expect(result).toBe("nickname-too-long");
+  expect(alert).toBe(null);
 });
 
 test("createAlert with a duplicate wallet alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   const { result: result1, object: alert1 } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   expect(result1).toBe("success");
   expect(alert1).toMatchObject({
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result: result2, object: alert2 } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   expect(result2).toBe("already-exists");
   expect(alert2).toBe(null);
@@ -801,7 +651,7 @@ test("getAlertsByAddress without arguments", async () => {
 
 test("getAlertsByAddress without matching alerts", async () => {
   const { result, objects: alerts } = await dbClient.getAlertsByAddress({
-    address: addresses1[0],
+    address: address1,
   });
   expect(result).toBe("success");
   expect(alerts.length).toBe(0);
@@ -810,34 +660,114 @@ test("getAlertsByAddress without matching alerts", async () => {
 test("getAlertsByAddress with two wallet alerts from different users on the same address", async () => {
   const { object: user1 } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   const { object: user2 } = await dbClient.createUser({
     discordId: discordId2,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user1.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   await dbClient.createAlert({
     userId: user2.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { objects: alertsByAddress } = await dbClient.getAlertsByAddress({
-    address: addresses1[0],
+    address: address1,
   });
   expect(alertsByAddress.length).toBe(2);
+});
+
+test("getAlertsByAddress with a setting present in the alert", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: "test",
+  });
+  await dbClient.setAllowedEvents({
+    discordId: discordId1,
+    nickname: "test",
+    allowedEvents: ["offer"],
+  });
+  const {
+    objects: [alert],
+  } = await dbClient.getAlertsByAddress({
+    address: address1,
+  });
+  expect(alert.maxOfferFloorDifference).toBe(MAX_OFFER_FLOOR_DIFFERENCE);
+  expect(alert.allowedMarketplaces).toMatchObject(allMarketplaceIds);
+  expect(alert.allowedEvents).toMatchObject(["offer"]);
+});
+
+test("getAlertsByAddress with a setting present in the user but missing on the alert", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.setMaxFloorDifference({
+    discordId: discordId1,
+    maxOfferFloorDifference: 32,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+  });
+  const {
+    objects: [alert],
+  } = await dbClient.getAlertsByAddress({
+    address: address1,
+  });
+  expect(alert.maxOfferFloorDifference).toBe(32);
+  expect(alert.allowedMarketplaces).toMatchObject(allMarketplaceIds);
+  expect(alert.allowedEvents).toMatchObject(allEventIds);
+});
+
+test("getAlertsByNickname without arguments", async () => {
+  const { result, objects: alerts } = await dbClient.getAlertsByNickname();
+  expect(result).toBe("missing-arguments");
+  expect(alerts.length).toBe(0);
+});
+
+test("getAlertsByNickname without matching alerts", async () => {
+  const { result, objects: alerts } = await dbClient.getAlertsByNickname({
+    discordId: discordId1,
+    nickname: "test",
+  });
+  expect(result).toBe("success");
+  expect(alerts.length).toBe(0);
+});
+
+test("getAlertsByNickname with an existing alert", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: address1,
+    nickname: "test",
+  });
+  const { objects: alertsByAddress } = await dbClient.getAlertsByNickname({
+    discordId: discordId1,
+    nickname: "test",
+  });
+  expect(alertsByAddress[0]).toMatchObject({
+    type: "wallet",
+    address: address1,
+    nickname: "test",
+  });
 });
 
 test("deleteAlert with a missing alert", async () => {
   const { result } = await dbClient.deleteAlert({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
   });
   expect(result).toBe("missing-alert");
 });
@@ -845,17 +775,15 @@ test("deleteAlert with a missing alert", async () => {
 test("deleteAlert with an existing alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result } = await dbClient.deleteAlert({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
   });
   expect(result).toBe("success");
 });
@@ -863,13 +791,11 @@ test("deleteAlert with an existing alert", async () => {
 test("deleteAlert by nickname with an existing alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
   });
   const { result } = await dbClient.deleteAlert({
@@ -888,26 +814,20 @@ test("getUserAlerts with no arguments", async () => {
 test("deleteAlert with a user that has two alerts", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses2[0],
+    address: address2,
   });
-  const { objects: userAlerts1 } = await dbClient.getUserAlerts({
-    discordId: discordId1,
-  });
-  console.log(`User alerts 1 ${JSON.stringify(userAlerts1)}`);
   const { result } = await dbClient.deleteAlert({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
   });
   expect(result).toBe("success");
   const { objects: userAlerts } = await dbClient.getUserAlerts({
@@ -916,7 +836,7 @@ test("deleteAlert with a user that has two alerts", async () => {
   expect(userAlerts.length).toBe(1);
   expect(userAlerts[0]).toMatchObject({
     type: "wallet",
-    address: addresses2[0],
+    address: address2,
   });
 });
 
@@ -928,7 +848,7 @@ test("setAlertNickname with no arguments", async () => {
 
 test("setAlertNickname without one argument", async () => {
   const { result, object: alert } = await dbClient.setAlertNickname({
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
   });
   expect(result).toBe("missing-arguments");
@@ -938,17 +858,15 @@ test("setAlertNickname without one argument", async () => {
 test("setAlertNickname without a matching alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result, object: alert } = await dbClient.setAlertNickname({
     discordId: discordId1,
-    address: addresses2[0],
+    address: address2,
     nickname: "deposit-1",
   });
   expect(result).toBe("error");
@@ -958,23 +876,93 @@ test("setAlertNickname without a matching alert", async () => {
 test("setAlertNickname with an existing alert", async () => {
   const { object: user } = await dbClient.createUser({
     discordId: discordId1,
-    addresses: [],
-    tokens: [],
   });
   await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
   });
   const { result, object: alert } = await dbClient.setAlertNickname({
     discordId: discordId1,
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
   });
   expect(result).toBe("success");
   expect(alert).toMatchObject({
     type: "wallet",
-    address: addresses1[0],
+    address: address1,
     nickname: "deposit-1",
+  });
+});
+
+test("setCollectionFloor with no arguments", async () => {
+  const { result, object: collectionFloor } =
+    await dbClient.setCollectionFloor();
+  expect(result).toBe("missing-arguments");
+  expect(collectionFloor).toBe(null);
+});
+
+test("setCollectionFloor with one argument", async () => {
+  const { result, object: collectionFloor } = await dbClient.setCollectionFloor(
+    { collection: collection1 }
+  );
+  expect(result).toBe("missing-arguments");
+  expect(collectionFloor).toBe(null);
+});
+
+test("setCollectionFloor with both arguments", async () => {
+  const { result, object: collectionFloor } = await dbClient.setCollectionFloor(
+    { collection: collection1, price: 0.5 }
+  );
+  expect(result).toBe("success");
+  expect(collectionFloor).toMatchObject({
+    collection: collection1,
+    price: 0.5,
+  });
+});
+
+test("getCollectionFloor with no arguments", async () => {
+  const { result, object: collectionFloor } =
+    await dbClient.getCollectionFloor();
+  expect(result).toBe("missing-arguments");
+  expect(collectionFloor).toBe(null);
+});
+
+test("getCollectionFloor without a matching collection floor", async () => {
+  const { result, object: collectionFloor } = await dbClient.getCollectionFloor(
+    {
+      collection: collection1,
+    }
+  );
+  expect(result).toBe("success");
+  expect(collectionFloor).toBe(null);
+});
+
+test("getCollectionFloor with a matching collection floor", async () => {
+  await dbClient.setCollectionFloor({ collection: collection1, price: 0.5 });
+  const { result, object: collectionFloor } = await dbClient.getCollectionFloor(
+    {
+      collection: collection1,
+    }
+  );
+  expect(result).toBe("success");
+  expect(collectionFloor).toMatchObject({
+    collection: collection1,
+    price: 0.5,
+  });
+});
+
+test("getCollectionFloor with two collection floors for the same collection", async () => {
+  await dbClient.setCollectionFloor({ collection: collection1, price: 0.5 });
+  await dbClient.setCollectionFloor({ collection: collection1, price: 4.2 });
+  const { result, object: collectionFloor } = await dbClient.getCollectionFloor(
+    {
+      collection: collection1,
+    }
+  );
+  expect(result).toBe("success");
+  expect(collectionFloor).toMatchObject({
+    collection: collection1,
+    price: 4.2,
   });
 });

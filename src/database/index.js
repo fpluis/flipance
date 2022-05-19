@@ -1,8 +1,12 @@
-import { readFileSync } from "fs";
 import process from "process";
+import { readFileSync } from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import postgre from "pg";
+
+const { Pool } = postgre;
+
+dotenv.config({ path: path.resolve(".env") });
 
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
@@ -10,21 +14,16 @@ const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
 
-const { Pool } = postgre;
-
-dotenv.config({ path: path.resolve(".env") });
-
 const {
   DB_HOSTNAME,
   DB_PORT,
   DB_USERNAME,
   DB_NAME,
   DB_PASSWORD,
+  MAX_NICKNAME_LENGTH = 50,
   DEFAULT_USER_ALARM_LIMIT = 3,
   DEFAULT_SERVER_ALARM_LIMIT = 1,
-  DEFAULT_MAX_OFFER_FLOOR_DISTANCE = 15,
-  DEFAULT_ALLOWED_MARKETPLACES = allMarketplaceIds,
-  DEFAULT_ALLOWED_EVENTS = allEventIds,
+  MAX_OFFER_FLOOR_DIFFERENCE = 15,
 } = process.env;
 
 export const isDbCreated = async ({
@@ -33,7 +32,7 @@ export const isDbCreated = async ({
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   const pool = new Pool({
     host,
     port,
@@ -65,7 +64,7 @@ export const createDb = async ({
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   const dbExists = await isDbCreated({ host, port, user, password, dbName });
   if (dbExists) {
     return false;
@@ -87,6 +86,8 @@ export const createDb = async ({
   });
 
   console.log(`Created DB "${dbName}"`);
+  // Restore connect access to clients in case it was revoked
+  // await client.query(`GRANT CONNECT ON DATABASE "${dbName}" TO public`);
   await client.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8'`);
   await client.release();
   return pool.end().then(() => true);
@@ -96,7 +97,7 @@ const createTableQueries = [
   `CREATE TYPE alert_type AS ENUM ('wallet', 'collection')`,
   `CREATE TABLE IF NOT EXISTS settings (\
     id serial PRIMARY KEY,\
-    max_offer_floor_difference SMALLINT,\
+    max_offer_floor_difference DOUBLE PRECISION,\
     allowed_marketplaces TEXT [],\
     allowed_events TEXT []\
   );`,
@@ -106,9 +107,7 @@ const createTableQueries = [
     discord_id VARCHAR(20),\
     UNIQUE (discord_id),\
     created_at TIMESTAMPTZ NOT NULL,\
-    alarm_limit SMALLINT NOT NULL,\
-    addresses TEXT [],\
-    tokens TEXT [],\
+    alert_limit SMALLINT NOT NULL,\
     FOREIGN KEY (settings_id)\
         REFERENCES settings (id)\
   );`,
@@ -117,11 +116,13 @@ const createTableQueries = [
     type alert_type,\
     settings_id INT NOT NULL,\
     user_id INT NOT NULL,\
-    nickname VARCHAR(50),\
+    nickname VARCHAR(${MAX_NICKNAME_LENGTH}),\
     UNIQUE (user_id, nickname),\
     UNIQUE (user_id, address),\
     address VARCHAR(100) NOT NULL,\
+    tokens TEXT [],\
     created_at TIMESTAMPTZ NOT NULL,\
+    synced_at TIMESTAMPTZ NOT NULL,\
     channel_id VARCHAR(20),\
     FOREIGN KEY (settings_id)\
         REFERENCES "settings" (id),\
@@ -134,13 +135,13 @@ const createTableQueries = [
     PRIMARY KEY (collection, token_id),\
     created_at TIMESTAMPTZ NOT NULL,\
     ends_at TIMESTAMPTZ NOT NULL,\
-    price SMALLINT NOT NULL\
+    price DOUBLE PRECISION NOT NULL\
   );`,
   `CREATE TABLE IF NOT EXISTS floor_prices (\
     collection VARCHAR(100) NOT NULL,\
     created_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
-    price SMALLINT NOT NULL\
+    price DOUBLE PRECISION NOT NULL\
   );`,
 ];
 
@@ -150,7 +151,7 @@ export const setUpDb = async ({
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   console.log(`Set up DB`);
   const pool = new Pool({
     host,
@@ -178,7 +179,7 @@ export const clearDb = async ({
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   const pool = new Pool({
     host,
     port,
@@ -205,7 +206,7 @@ export const removeDb = async ({
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   const pool = new Pool({
     host,
     port,
@@ -220,7 +221,8 @@ export const removeDb = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  // await client.query(`REVOKE CONNECT ON DATABASE "${dbName}" FROM public`);
+  // Revoke access to other clients so it can be dropped
+  // await client.query(`REVOKE CONNECT ON DATABASE "${dbName}" FROM public;`);
   await client.query(`DROP DATABASE "${dbName}"`);
   await client.release();
   return pool.end();
@@ -232,16 +234,20 @@ const toSettingsObject = (settings) => {
   }
 
   const {
-    max_offer_floor_difference: maxOfferFloorDifference,
-    allowed_marketplaces: allowedMarketplaces,
-    allowed_events: allowedEvents,
+    max_offer_floor_difference,
+    allowed_marketplaces,
+    allowed_events,
     ...props
   } = settings;
   return {
     ...props,
-    maxOfferFloorDifference,
-    allowedMarketplaces,
-    allowedEvents,
+    maxOfferFloorDifference:
+      max_offer_floor_difference == null
+        ? MAX_OFFER_FLOOR_DIFFERENCE
+        : max_offer_floor_difference,
+    allowedMarketplaces:
+      allowed_marketplaces == null ? allMarketplaceIds : allowed_marketplaces,
+    allowedEvents: allowed_events == null ? allEventIds : allowed_events,
   };
 };
 
@@ -254,24 +260,21 @@ const toUserObject = (user) => {
     settings_id: settingsId,
     discord_id: discordId,
     created_at: createdAt,
-    alarm_limit: alarmLimit,
-    max_offer_floor_difference: maxOfferFloorDifference,
-    allowed_marketplaces: allowedMarketplaces,
-    allowed_events: allowedEvents,
+    alert_limit: alertLimit,
     ...props
   } = user;
   return {
     ...props,
-    maxOfferFloorDifference,
-    allowedMarketplaces,
-    allowedEvents,
+    ...toSettingsObject(props),
     settingsId,
     discordId,
     createdAt,
-    alarmLimit,
+    alertLimit,
   };
 };
 
+// If a specific setting is missing, the setting from the user
+// will be returned, if provided.
 const toAlertObject = (alert) => {
   if (alert == null) {
     return null;
@@ -281,10 +284,14 @@ const toAlertObject = (alert) => {
     settings_id: settingsId,
     user_id: userId,
     created_at: createdAt,
+    synced_at: syncedAt,
     channel_id: channelId,
-    max_offer_floor_difference: maxOfferFloorDifference,
-    allowed_marketplaces: allowedMarketplaces,
-    allowed_events: allowedEvents,
+    alert_max_offer_floor_difference,
+    alert_allowed_marketplaces,
+    alert_allowed_events,
+    user_max_offer_floor_difference,
+    user_allowed_marketplaces,
+    user_allowed_events,
     ...props
   } = alert;
   return {
@@ -294,15 +301,23 @@ const toAlertObject = (alert) => {
     createdAt,
     channelId,
     maxOfferFloorDifference:
-      maxOfferFloorDifference == null
-        ? DEFAULT_MAX_OFFER_FLOOR_DISTANCE
-        : maxOfferFloorDifference,
+      alert_max_offer_floor_difference == null
+        ? user_max_offer_floor_difference == null
+          ? MAX_OFFER_FLOOR_DIFFERENCE
+          : user_max_offer_floor_difference
+        : alert_max_offer_floor_difference,
     allowedMarketplaces:
-      allowedMarketplaces == null
-        ? DEFAULT_ALLOWED_MARKETPLACES
-        : allowedMarketplaces,
+      alert_allowed_marketplaces == null
+        ? user_allowed_marketplaces == null
+          ? allMarketplaceIds
+          : user_allowed_marketplaces
+        : alert_allowed_marketplaces,
     allowedEvents:
-      allowedEvents == null ? DEFAULT_ALLOWED_EVENTS : allowedEvents,
+      alert_allowed_events == null
+        ? user_allowed_events == null
+          ? allEventIds
+          : user_allowed_events
+        : alert_allowed_events,
   };
 };
 
@@ -325,13 +340,25 @@ const toOfferObject = (offer) => {
   };
 };
 
+const toCollectionFloorObject = (collectionFloor) => {
+  if (collectionFloor == null) {
+    return null;
+  }
+
+  const { created_at: createdAt, ...props } = collectionFloor;
+  return {
+    ...props,
+    createdAt,
+  };
+};
+
 export const createDbClient = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
   user = DB_USERNAME,
   password = DB_PASSWORD,
   dbName = DB_NAME,
-}) => {
+} = {}) => {
   const pool = new Pool({
     host,
     port,
@@ -354,7 +381,7 @@ export const createDbClient = async ({
     }
 
     const { rows } = await client.query(
-      `SELECT * FROM users
+      `SELECT *, users.id AS id FROM users
       LEFT JOIN settings\
       ON settings.id = users.settings_id\
       WHERE discord_id = $1`,
@@ -366,37 +393,20 @@ export const createDbClient = async ({
     };
   };
 
-  const createUser = async ({
-    discordId,
-    type = "user",
-    addresses = [],
-    tokens = [],
-    maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
-    allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
-    allowedEvents = DEFAULT_ALLOWED_EVENTS,
-  } = {}) => {
+  const createUser = async ({ discordId, type = "user" } = {}) => {
     if (discordId == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const alarmLimit =
+    const alertLimit =
       type === "user" ? DEFAULT_USER_ALARM_LIMIT : DEFAULT_SERVER_ALARM_LIMIT;
-    const values = [
-      maxOfferFloorDifference,
-      allowedMarketplaces,
-      allowedEvents,
-      discordId,
-      alarmLimit,
-      addresses,
-      tokens,
-      new Date(),
-    ];
+    const values = [discordId, alertLimit, new Date()];
     return client
       .query(
         `WITH new_settings AS (
-          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES ($1, $2, $3) returning id
+          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES (NULL, NULL, NULL) returning id
         ) \
-        INSERT INTO users (discord_id, alarm_limit, addresses, tokens, created_at, settings_id) VALUES($4, $5, $6, $7, $8, (SELECT * from new_settings)) RETURNING *`,
+        INSERT INTO users (discord_id, alert_limit, created_at, settings_id) VALUES($1, $2, $3, (SELECT id from new_settings)) RETURNING *`,
         values
       )
       .then(({ rows }) => {
@@ -425,10 +435,8 @@ export const createDbClient = async ({
     channelId,
     nickname,
     address,
+    tokens = [],
     type,
-    maxOfferFloorDifference = DEFAULT_MAX_OFFER_FLOOR_DISTANCE,
-    allowedMarketplaces = DEFAULT_ALLOWED_MARKETPLACES,
-    allowedEvents = DEFAULT_ALLOWED_EVENTS,
   } = {}) => {
     // At least one id is necessary to associate an alert to a user
     if (discordId == null && providedUserId == null) {
@@ -437,7 +445,7 @@ export const createDbClient = async ({
 
     let userId = providedUserId;
     if (providedUserId == null) {
-      const { object: user } = await getUserByDiscordId(discordId);
+      const { object: user } = await getUserByDiscordId({ discordId });
       if (user == null) {
         return { result: "missing-user", object: null };
       }
@@ -445,16 +453,15 @@ export const createDbClient = async ({
       userId = user.id;
     }
 
-    const values = [
-      maxOfferFloorDifference,
-      allowedMarketplaces,
-      allowedEvents,
-      type,
-      userId,
-      address,
-      new Date(),
+    const values = [type, userId, address, tokens, new Date(), new Date()];
+    const props = [
+      "type",
+      "user_id",
+      "address",
+      "tokens",
+      "created_at",
+      "synced_at",
     ];
-    const props = ["type", "user_id", "address", "created_at"];
     if (nickname) {
       values.push(nickname);
       props.push("nickname");
@@ -466,19 +473,13 @@ export const createDbClient = async ({
     }
 
     const propsQuery = props.join(", ");
-    // We have to add 4 to take into account that pg expects
-    //  1-indexed references and that we have to skip the
-    // first 3 values, which are used for settings
-    const valuesQuery = values
-      .slice(3)
-      .map((_, index) => `$${index + 4}`)
-      .join(", ");
+    const valuesQuery = values.map((_, index) => `$${index + 1}`).join(", ");
     return client
       .query(
-        `WITH new_settings AS (
-          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES ($1, $2, $3) returning id
+        `WITH alert_settings AS (
+          INSERT INTO settings (max_offer_floor_difference, allowed_marketplaces, allowed_events) VALUES (NULL, NULL, NULL) returning id
         ) \
-        INSERT INTO alerts (${propsQuery}, settings_id) VALUES (${valuesQuery}, (SELECT * from new_settings)) RETURNING *`,
+        INSERT INTO alerts (${propsQuery}, settings_id) VALUES (${valuesQuery}, (SELECT * from alert_settings)) RETURNING *`,
         values
       )
       .then(({ rows }) => {
@@ -493,13 +494,17 @@ export const createDbClient = async ({
             props
           )} and values ${JSON.stringify(values)}: ${JSON.stringify(error)}`
         );
-        const { constraint } = error;
+        const { constraint, code, routine } = error;
         return {
           object: null,
-          result:
-            constraint === "alerts_user_id_address_key"
-              ? "already-exists"
-              : "missing-user",
+          result: [
+            "alerts_user_id_address_key",
+            "alerts_user_id_nickname_key",
+          ].includes(constraint)
+            ? "already-exists"
+            : code === "22001" && routine === "varchar"
+            ? "nickname-too-long"
+            : "missing-user",
         };
       });
   };
@@ -538,53 +543,67 @@ export const createDbClient = async ({
       `DELETE from alerts WHERE user_id = (SELECT user_id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
       values
     );
-    console.log(`DELETE alert result: ${JSON.stringify(result)}`);
     return {
       result: result.rowCount > 0 ? "success" : "missing-alert",
       object: result.rows[0],
     };
   };
 
-  // Also returns the settings associated to either
-  // the alert or the user if the alert has no settings
+  const alertSettingsSelectProps =
+    "alert_settings.max_offer_floor_difference as alert_max_offer_floor_difference, alert_settings.allowed_marketplaces as alert_allowed_marketplaces, alert_settings.allowed_events as alert_allowed_events, user_settings.max_offer_floor_difference as user_max_offer_floor_difference, user_settings.allowed_marketplaces as user_allowed_marketplaces, user_settings.allowed_events as user_allowed_events";
+
+  // Also returns the settings associated to the alert and user.
   const getAlertsByAddress = async ({ address } = {}) => {
     if (address == null) {
       return { result: "missing-arguments", objects: [] };
     }
 
-    const { rows } = await client.query(
-      `SELECT *, alerts.id FROM alerts\
-      LEFT JOIN settings\
-      ON settings.id = alerts.settings_id\
+    const result = await client.query(
+      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+      LEFT JOIN settings AS alert_settings\
+      ON alert_settings.id = alerts.settings_id\
+      LEFT JOIN settings AS user_settings\
+      ON user_settings.id = (\
+        SELECT settings_id FROM users WHERE users.id = alerts.user_id)\
       WHERE address = $1`,
       [address]
+    );
+    const { rows } = result;
+    return { result: "success", objects: rows.map(toAlertObject) };
+  };
+
+  const getAlertsByNickname = async ({ discordId, nickname } = {}) => {
+    if (discordId == null || nickname == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
+    const { rows } = await client.query(
+      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+      LEFT JOIN settings AS alert_settings\
+      ON alert_settings.id = alerts.settings_id\
+      LEFT JOIN settings AS user_settings\
+      ON user_settings.id = (\
+        SELECT settings_id FROM users WHERE users.discord_id = $2)\
+      WHERE nickname = $1 AND user_id = (SELECT id FROM users WHERE discord_id = $2)`,
+      [nickname, discordId]
     );
     return { result: "success", objects: rows.map(toAlertObject) };
   };
 
-  const getAllUsers = async () => {
-    const { rows } = await client.query(`SELECT * FROM users`);
-    return { result: "success", objects: rows.map(toUserObject) };
-  };
-
-  const getUsers = async ({ ids } = {}) => {
-    if (ids == null) {
-      return { result: "missing-arguments", objects: [] };
-    }
-
-    if (ids.length === 0) {
-      return { result: "success", objects: [] };
-    }
-
-    const idsReference = ids.map((_, index) => `$${index + 1}`).join(", ");
-    const { rows } = await client.query(
-      `SELECT * FROM users\
-      LEFT JOIN settings\
-      ON settings.id = users.settings_id\
-      WHERE users.id IN (${idsReference})`,
-      ids
-    );
-    return { result: "success", objects: rows.map(toUserObject) };
+  const getAllAlerts = async () => {
+    const { rows } =
+      await client.query(`SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
+        LEFT JOIN users\
+        ON users.id = alerts.user_id\
+        LEFT JOIN settings AS alert_settings\
+        ON alert_settings.id = alerts.settings_id\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.id = alerts.user_id)`);
+    return {
+      result: "success",
+      objects: rows.map((row) => toAlertObject(toUserObject(row))),
+    };
   };
 
   const getUserAlerts = async ({ discordId } = {}) => {
@@ -593,75 +612,33 @@ export const createDbClient = async ({
     }
 
     const { rows } = await client.query(
-      `SELECT *, alerts.id FROM alerts\
-      LEFT JOIN settings\
-      ON settings.id = alerts.settings_id\
+      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+      LEFT JOIN settings AS alert_settings\
+      ON alert_settings.id = alerts.settings_id\
+      LEFT JOIN settings AS user_settings\
+      ON user_settings.id = (\
+        SELECT settings_id FROM users WHERE users.discord_id = $1)
       WHERE user_id = (SELECT id FROM users WHERE discord_id = $1)`,
       [discordId]
     );
     return { result: "success", objects: rows.map(toAlertObject) };
   };
 
-  const addUserAddress = async ({ discordId, addresses, tokens = [] } = {}) => {
-    if (discordId == null || addresses == null) {
-      return { result: "missing-arguments", object: null };
-    }
-
-    const result = await client.query(
-      `UPDATE users\
-      SET addresses = array_cat(addresses, $2), tokens = array_cat(tokens, $3)\
-      WHERE discord_id = $1\
-      RETURNING *`,
-      [discordId, addresses, tokens]
-    );
-    const { rows } = result;
-    return {
-      result: rows.length > 0 ? "success" : "missing-user",
-      object: toUserObject(rows[0]),
-    };
-  };
-
-  const deleteUserAddresses = async ({
-    discordId,
-    addresses,
-    tokens = [],
-  } = {}) => {
-    if (discordId == null || addresses == null) {
-      return { result: "missing-arguments", object: null };
-    }
-
-    const result = await client.query(
-      `UPDATE users\
-      SET addresses =\
-        (SELECT array(SELECT unnest (addresses::TEXT[]) EXCEPT SELECT unnest ($2::TEXT[]))),\
-      tokens =\
-        (SELECT array(SELECT unnest (tokens::TEXT[]) EXCEPT SELECT unnest ($3::TEXT[])))\
-      WHERE discord_id = $1\
-      RETURNING *`,
-      [discordId, addresses, tokens]
-    );
-    const { rows } = result;
-    return {
-      result: rows.length > 0 ? "success" : "missing-user",
-      object: toUserObject(rows[0]),
-    };
-  };
-
-  const setUserTokens = async ({ id, tokens } = {}) => {
+  const setAlertTokens = async ({ id, tokens } = {}) => {
     if (id == null || tokens == null) {
       return { result: "missing-arguments", object: null };
     }
 
     const result = await client.query(
-      `UPDATE users\
-      SET tokens = $2\
+      `UPDATE alerts\
+      SET tokens = $2, synced_at = $3\
       WHERE id = $1\
       RETURNING *`,
-      [id, tokens]
+      [id, tokens, new Date()]
     );
     const { rows } = result;
     return {
-      result: rows.length > 0 ? "success" : "missing-user",
+      result: rows.length > 0 ? "success" : "missing-alert",
       object: toUserObject(rows[0]),
     };
   };
@@ -669,6 +646,7 @@ export const createDbClient = async ({
   const setMaxFloorDifference = async ({
     discordId,
     address,
+    nickname,
     maxOfferFloorDifference,
   } = {}) => {
     if (discordId == null || maxOfferFloorDifference == null) {
@@ -682,6 +660,10 @@ export const createDbClient = async ({
       values.push(address);
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    } else if (nickname != null) {
+      values.push(nickname);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
     const response = await client.query(
@@ -703,6 +685,7 @@ export const createDbClient = async ({
   const setAllowedEvents = async ({
     discordId,
     address,
+    nickname,
     allowedEvents,
   } = {}) => {
     if (discordId == null || allowedEvents == null) {
@@ -716,6 +699,10 @@ export const createDbClient = async ({
       values.push(address);
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    } else if (nickname != null) {
+      values.push(nickname);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
     const response = await client.query(
@@ -737,6 +724,7 @@ export const createDbClient = async ({
   const setAllowedMarketplaces = async ({
     discordId,
     address,
+    nickname,
     allowedMarketplaces,
   } = {}) => {
     if (discordId == null || allowedMarketplaces == null) {
@@ -750,6 +738,10 @@ export const createDbClient = async ({
       values.push(address);
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
+    } else if (nickname != null) {
+      values.push(nickname);
+      condition =
+        "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
     const response = await client.query(
@@ -795,6 +787,35 @@ export const createDbClient = async ({
     };
   };
 
+  const getCollectionFloor = async ({ collection } = {}) => {
+    if (collection == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
+    const { rows } = await client.query(
+      `SELECT * FROM floor_prices\
+      WHERE collection = $1\
+      ORDER BY created_at DESC`,
+      [collection]
+    );
+    return { result: "success", object: toCollectionFloorObject(rows[0]) };
+  };
+
+  const setCollectionFloor = async ({ collection, price } = {}) => {
+    if (collection == null || price == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
+    const { rows } = await client.query(
+      `INSERT INTO floor_prices (collection, created_at, price) VALUES ($1, $2, $3) RETURNING *`,
+      [collection, new Date(), price]
+    );
+    return {
+      result: rows.length > 0 ? "success" : "error",
+      object: toCollectionFloorObject(rows[0]),
+    };
+  };
+
   const destroy = async () => {
     await client.release();
     return pool.end();
@@ -805,19 +826,19 @@ export const createDbClient = async ({
     createAlert,
     setAlertNickname,
     deleteAlert,
+    setAlertTokens,
     createUser,
     getAlertsByAddress,
-    getAllUsers,
-    getUsers,
+    getAlertsByNickname,
+    getAllAlerts,
     getUserAlerts,
-    addUserAddress,
-    deleteUserAddresses,
-    setUserTokens,
     setMaxFloorDifference,
     setAllowedEvents,
     setAllowedMarketplaces,
     getAllCollectionOffers,
     setCollectionOffer,
+    getCollectionFloor,
+    setCollectionFloor,
     destroy,
   };
 };
