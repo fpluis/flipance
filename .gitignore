@@ -1,5 +1,5 @@
 node_modules
-errors.txt
+logs
 .terraform
 .terraform.lock.hcl
 .env
