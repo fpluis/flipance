@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop */
-import { readFileSync } from "fs";
+import { access, readFileSync } from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import EventEmitter from "events";
@@ -35,6 +35,8 @@ const {
   INFURA_PROJECT_ID,
   POCKET_PROJECT_ID,
   ALCHEMY_API_KEY,
+  NFT_SCAN_API_ID,
+  NFT_SCAN_SECRET,
 } = process.env;
 
 const ethProvider = getDefaultProvider("homestead", {
@@ -79,18 +81,80 @@ const parseAddressFromLogs = (address) => {
   return address;
 };
 
-export const getAddressNFTs = async (moralisClient, address) => {
-  const { result: newTokens } = await moralisClient.Web3API.account
+const NFTScanCache = {
+  token: "",
+  expiry: new Date("1970-01-01"),
+};
+
+const getNFTScanToken = async () => {
+  if (NFTScanCache.expiry > new Date()) {
+    return NFTScanCache.token;
+  }
+
+  return fetch(
+    `https://restapi.nftscan.com/gw/token?apiKey=${NFT_SCAN_API_ID}&apiSecret=${NFT_SCAN_SECRET}`
+  )
+    .then((res) => res.json())
+    .then((result) => {
+      console.log(`Fetch token result: ${JSON.stringify(result)}`);
+      const {
+        data: { accessToken, expiration },
+      } = result;
+      const newExpiry = new Date();
+      newExpiry.setSeconds(newExpiry.getTime() + expiration * 1000);
+      console.log(`New expiry date ${newExpiry.toUTCString()}`);
+      NFTScanCache.expiry = newExpiry;
+      NFTScanCache.token = accessToken;
+      return accessToken;
+    });
+};
+
+export const getAddressNFTs = async (moralisClient, address) =>
+  moralisClient.Web3API.account
     .getNFTs({
       address,
     })
-    .catch(() => {
-      return { result: [] };
+    .then(({ result }) => {
+      return result.map(
+        ({ token_address, token_id }) => `${token_address}/${token_id}`
+      );
+    })
+    .catch(async () => {
+      console.log(`Error getting address NFTs using moralis`);
+      const accessToken = await getNFTScanToken();
+      console.log(`Calling NFTScan with token ${accessToken}`);
+      return fetch(
+        `https://restapi.nftscan.com/api/v1/getAllNftByUserAddress`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Token": accessToken,
+          },
+          body: JSON.stringify({
+            erc: "erc721",
+            page_index: 1,
+            page_size: 100,
+            user_address: address,
+          }),
+        }
+      )
+        .then((res) => res.json())
+        .then((response) => {
+          console.log(`NFTScan response: ${JSON.stringify(response)}`);
+          const {
+            data: { content },
+          } = response;
+          return content.map(
+            ({ nft_asset_id, nft_creator }) =>
+              `${nft_creator}/${parseInt(nft_asset_id, 16)}`
+          );
+        })
+        .catch((error) => {
+          console.log(`Error calling nftscan:`, error);
+          return [];
+        });
     });
-  return newTokens.map(
-    ({ token_address, token_id }) => `${token_address}/${token_id}`
-  );
-};
 
 export const getCollectionMetadata = (collection) => {
   const tokenContract = new ethers.Contract(collection, erc721Abi, ethProvider);
@@ -325,21 +389,22 @@ const openSeaEventListener = (emit) => {
   return contract;
 };
 
-const callLRWithRetries = (endpoint, retries = 3) =>
+const callLRWithRetries = (endpoint, retries = 1) =>
   fetch(endpoint)
     .then((res) => res.json())
     .then(async (response) => {
-      const { data, message, success } = response;
+      const { data, message, success, errors } = response;
       if (success === true) {
         return data;
       }
 
       console.log(`Error calling LR: ${message}`);
-      if (message === "Too Many Requests") {
+      if (message === "Too Many Requests" && retries > 0) {
         await sleep(Math.random() * 30 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
       }
 
+      console.log(`Errors calling ${endpoint}:`, errors);
       return [];
     })
     .catch(async (error) => {
@@ -361,8 +426,7 @@ export const getCollectionOffers = (collection) =>
 
 export const getCollectionFloor = (collection) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=1&status[]=VALID&sort=PRICE_ASC`,
-    1
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=1&status[]=VALID&sort=PRICE_ASC`
   ).then((listings) => {
     if (listings.length === 0) {
       return null;
@@ -379,12 +443,11 @@ export const getCollectionFloor = (collection) =>
   });
 
 export const pollCollectionOffers = async (
-  collectionMap,
+  collections,
   emit,
-  currentBids = []
+  currentOffers = []
 ) => {
-  const collections = Object.entries(collectionMap);
-  const bids = await Promise.all(
+  const offers = await Promise.all(
     collections
       .slice(0, 60)
       .map(
@@ -397,32 +460,29 @@ export const pollCollectionOffers = async (
             collectionFloor = 0,
           },
         ]) => {
-          const bids = await getCollectionOffers(collection).catch((error) => {
-            console.log(
-              `Error getting collection bids for ${collection}`,
-              error
-            );
-          });
-          if (bids.length === 0) {
+          const offers = await getCollectionOffers(collection).catch(
+            (error) => {
+              console.log(
+                `Error getting collection bids for ${collection}`,
+                error
+              );
+            }
+          );
+          if (offers.length === 0) {
             return;
           }
 
-          const [topBid] = bids;
-          const { hash, price, endTime: endsAt, signer } = topBid;
+          const [topOffer] = offers;
+          const { hash, price, endTime: endsAt, signer } = topOffer;
           const currentHighestInWei = etherUtils.parseEther(
             `${currentHighest}`
-          );
-          console.log(
-            `Collection ${collection}. Top bid: ${price}; current highest: ${currentHighestInWei}; ends at ${new Date(
-              endsAt * 1000
-            )}`
           );
           if (
             BigNumber.from(price).gt(BigNumber.from(currentHighestInWei)) ||
             currentEndsAt < new Date().getTime()
           ) {
             emit("offer", {
-              ...topBid,
+              ...topOffer,
               watchers,
               collectionFloor,
               price: etherUtils.formatEther(price),
@@ -438,14 +498,14 @@ export const pollCollectionOffers = async (
         }
       )
   );
-  const newBids = currentBids.concat(bids);
+  const newOffers = currentOffers.concat(offers);
   const otherCollections = collections.slice(60);
   if (otherCollections.length > 0) {
     await sleep(POLL_COLLECTION_SLICE_DELAY);
-    return pollCollectionOffers(collections.slice(60), emit, newBids);
+    return pollCollectionOffers(collections.slice(60), emit, newOffers);
   }
 
-  return newBids;
+  return newOffers;
 };
 
 const looksRareEventListener = (emit) => {
