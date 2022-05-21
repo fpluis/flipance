@@ -19,7 +19,7 @@ const {
   DB_PORT,
   DB_USERNAME,
   DB_NAME,
-  DB_PASSWORD,
+  DB_PASSWORD = "",
   MAX_NICKNAME_LENGTH = 50,
   DEFAULT_USER_ALARM_LIMIT = 3,
   DEFAULT_SERVER_ALARM_LIMIT = 1,
@@ -38,6 +38,7 @@ export const isDbCreated = async ({
     port,
     user,
     password,
+    database: "postgres",
   });
 
   pool.on("error", (error) => {
@@ -75,6 +76,7 @@ export const createDb = async ({
     port,
     user,
     password,
+    database: "postgres",
   });
 
   pool.on("error", (error) => {
@@ -133,12 +135,14 @@ const createTableQueries = [
     PRIMARY KEY (collection, token_id),\
     created_at TIMESTAMPTZ NOT NULL,\
     ends_at TIMESTAMPTZ NOT NULL,\
+    marketplace TEXT NOT NULL,\
     price DOUBLE PRECISION NOT NULL\
   );`,
   `CREATE TABLE IF NOT EXISTS floor_prices (\
     collection VARCHAR(100) NOT NULL,\
     created_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
+    marketplace TEXT NOT NULL,\
     price DOUBLE PRECISION NOT NULL\
   );`,
 ];
