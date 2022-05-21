@@ -1,11 +1,6 @@
 terraform {
   required_version = ">= 0.13"
-  backend "s3" {
-    bucket  = var.TFSTATE_BUCKET
-    key     = var.TFSTATE_BUCKET_KEY
-    region  = var.AWS_REGION
-    encrypt = true
-  }
+  backend "s3" {}
 }
 
 provider "aws" {
@@ -17,13 +12,13 @@ resource "tls_private_key" "discord_instance" {
   rsa_bits  = 4096
 }
 
-resource "aws_key_pair" "discord_key" {
-  key_name   = "discord_key"
+resource "aws_key_pair" "flipance" {
+  key_name   = "flipance"
   public_key = tls_private_key.discord_instance.public_key_openssh
 }
 
 resource "local_sensitive_file" "pem_file" {
-  filename             = pathexpand("~/.ssh/discord_key.pem")
+  filename             = pathexpand("~/.ssh/flipance.pem")
   file_permission      = "600"
   directory_permission = "700"
   content              = tls_private_key.discord_instance.private_key_pem
@@ -58,60 +53,191 @@ resource "aws_security_group" "main" {
   ]
 }
 
+resource "aws_ssm_parameter" "ETHERSCAN_API_KEY" {
+  name  = "/prod/ETHERSCAN_API_KEY"
+  type  = "SecureString"
+  value = var.ETHERSCAN_API_KEY
+}
+
+resource "aws_ssm_parameter" "GITHUB_TOKEN" {
+  name  = "/prod/GITHUB_TOKEN"
+  type  = "SecureString"
+  value = var.GITHUB_TOKEN
+}
+
+resource "aws_ssm_parameter" "INFURA_PROJECT_ID" {
+  name  = "/prod/INFURA_PROJECT_ID"
+  type  = "SecureString"
+  value = var.INFURA_PROJECT_ID
+}
+
+resource "aws_ssm_parameter" "POCKET_PROJECT_ID" {
+  name  = "/prod/POCKET_PROJECT_ID"
+  type  = "SecureString"
+  value = var.POCKET_PROJECT_ID
+}
+
+resource "aws_ssm_parameter" "POCKET_SECRET_KEY" {
+  name  = "/prod/POCKET_SECRET_KEY"
+  type  = "SecureString"
+  value = var.POCKET_SECRET_KEY
+}
+
+resource "aws_ssm_parameter" "ALCHEMY_API_KEY" {
+  name  = "/prod/ALCHEMY_API_KEY"
+  type  = "SecureString"
+  value = var.ALCHEMY_API_KEY
+}
+
+resource "aws_ssm_parameter" "DISCORD_CLIENT_ID" {
+  name  = "/prod/DISCORD_CLIENT_ID"
+  type  = "SecureString"
+  value = var.DISCORD_CLIENT_ID
+}
+
+resource "aws_ssm_parameter" "DISCORD_BOT_TOKEN" {
+  name  = "/prod/DISCORD_BOT_TOKEN"
+  type  = "SecureString"
+  value = var.DISCORD_BOT_TOKEN
+}
+
+resource "aws_ssm_parameter" "DISCORD_CLIENT_ID_TEST" {
+  name  = "/prod/DISCORD_CLIENT_ID_TEST"
+  type  = "SecureString"
+  value = var.DISCORD_CLIENT_ID_TEST
+}
+
+resource "aws_ssm_parameter" "DISCORD_BOT_TOKEN_TEST" {
+  name  = "/prod/DISCORD_BOT_TOKEN_TEST"
+  type  = "SecureString"
+  value = var.DISCORD_BOT_TOKEN_TEST
+}
+
+resource "aws_ssm_parameter" "MORALIS_SERVER_URL" {
+  name  = "/prod/MORALIS_SERVER_URL"
+  type  = "SecureString"
+  value = var.MORALIS_SERVER_URL
+}
+
+resource "aws_ssm_parameter" "MORALIS_APP_ID" {
+  name  = "/prod/MORALIS_APP_ID"
+  type  = "SecureString"
+  value = var.MORALIS_APP_ID
+}
+
+resource "aws_ssm_parameter" "MORALIS_MASTER_KEY" {
+  name  = "/prod/MORALIS_MASTER_KEY"
+  type  = "SecureString"
+  value = var.MORALIS_MASTER_KEY
+}
+
+resource "aws_ssm_parameter" "NFT_SCAN_API_ID" {
+  name  = "/prod/NFT_SCAN_API_ID"
+  type  = "SecureString"
+  value = var.NFT_SCAN_API_ID
+}
+
+resource "aws_ssm_parameter" "NFT_SCAN_SECRET" {
+  name  = "/prod/NFT_SCAN_SECRET"
+  type  = "SecureString"
+  value = var.NFT_SCAN_SECRET
+}
+
+resource "aws_ssm_parameter" "DB_PASSWORD" {
+  name  = "/prod/DB_PASSWORD"
+  type  = "SecureString"
+  value = var.DB_PASSWORD
+}
+
+data "template_file" "userdata" {
+  template = file("${path.module}/scripts/startup.sh")
+  vars = {
+    GITHUB_TOKEN_PARAM           = aws_ssm_parameter.GITHUB_TOKEN.name
+    ETHERSCAN_API_KEY_PARAM      = aws_ssm_parameter.ETHERSCAN_API_KEY.name
+    INFURA_PROJECT_ID_PARAM      = aws_ssm_parameter.INFURA_PROJECT_ID.name
+    POCKET_PROJECT_ID_PARAM      = aws_ssm_parameter.POCKET_PROJECT_ID.name
+    POCKET_SECRET_KEY_PARAM      = aws_ssm_parameter.POCKET_SECRET_KEY.name
+    ALCHEMY_API_KEY_PARAM        = aws_ssm_parameter.ALCHEMY_API_KEY.name
+    DISCORD_CLIENT_ID_PARAM      = aws_ssm_parameter.DISCORD_CLIENT_ID.name
+    DISCORD_BOT_TOKEN_PARAM      = aws_ssm_parameter.DISCORD_BOT_TOKEN.name
+    DISCORD_CLIENT_ID_TEST_PARAM = aws_ssm_parameter.DISCORD_CLIENT_ID_TEST.name
+    DISCORD_BOT_TOKEN_TEST_PARAM = aws_ssm_parameter.DISCORD_BOT_TOKEN_TEST.name
+    MORALIS_SERVER_URL_PARAM     = aws_ssm_parameter.MORALIS_SERVER_URL.name
+    MORALIS_APP_ID_PARAM         = aws_ssm_parameter.MORALIS_APP_ID.name
+    MORALIS_MASTER_KEY_PARAM     = aws_ssm_parameter.MORALIS_MASTER_KEY.name
+    NFT_SCAN_API_ID_PARAM        = aws_ssm_parameter.NFT_SCAN_API_ID.name
+    NFT_SCAN_SECRET_PARAM        = aws_ssm_parameter.NFT_SCAN_SECRET.name
+    DB_HOSTNAME                  = var.DB_HOSTNAME
+    DB_PORT                      = var.DB_PORT
+    DB_USERNAME                  = var.DB_USERNAME
+    DB_NAME                      = var.DB_NAME
+    DB_PASSWORD                  = aws_ssm_parameter.DB_PASSWORD.name
+    MAX_NICKNAME_LENGTH          = var.MAX_NICKNAME_LENGTH
+    MAX_OFFER_FLOOR_DIFFERENCE   = var.MAX_OFFER_FLOOR_DIFFERENCE
+  }
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_iam_policy" "ec2_policy" {
+  name        = "ec2_policy"
+  path        = "/"
+  description = "Grant EC2 permission to access secure parameters"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter",
+          "ssm:GetParametersByPath"
+        ],
+        Resource = "arn:aws:ssm:${var.AWS_REGION}:${data.aws_caller_identity.current.account_id}:*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "ec2_role" {
+  name = "ec2_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_policy_attachment" "ec2_policy_role" {
+  name       = "ec2_attachment"
+  roles      = [aws_iam_role.ec2_role.name]
+  policy_arn = aws_iam_policy.ec2_policy.arn
+}
+
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "ec2_profile"
+  role = aws_iam_role.ec2_role.name
+}
+
 resource "aws_instance" "discord_server" {
   ami                    = "ami-000722651477bd39b"
-  instance_type          = "t3.micro"
-  key_name               = aws_key_pair.discord_key.key_name
+  instance_type          = var.EC2_INSTANCE_TYPE
+  key_name               = aws_key_pair.flipance.key_name
   vpc_security_group_ids = [aws_security_group.main.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
+  user_data              = data.template_file.userdata.rendered
 }
 
-resource "aws_dynamodb_table" "flipance_users" {
-  name         = "FlipanceUsers"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "id"
-
-  attribute {
-    name = "id"
-    type = "S"
-  }
-
-  tags = {
-    Name = "FlipanceUsers"
-  }
-}
-
-resource "aws_dynamodb_table" "flipance_alerts" {
-  name         = "FlipanceAlerts"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "userId"
-  range_key    = "address"
-
-  attribute {
-    name = "address"
-    type = "S"
-  }
-
-  attribute {
-    name = "userId"
-    type = "S"
-  }
-
-  tags = {
-    Name = "FlipanceAlerts"
-  }
-}
-
-resource "aws_dynamodb_table" "flipance_bids" {
-  name         = "FlipanceBids"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "address"
-
-  attribute {
-    name = "address"
-    type = "S"
-  }
-
-  tags = {
-    Name = "FlipanceBids"
-  }
+resource "aws_eip" "elastic_ip" {
+  instance = aws_instance.discord_server.id
+  vpc      = true
 }

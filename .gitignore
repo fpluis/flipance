@@ -5,3 +5,4 @@ logs
 .env
 package-lock.json
 coverage
+secret.tfvars
