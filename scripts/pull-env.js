@@ -3,17 +3,17 @@
   Its purpose is to pull the environment variables and save them
   to /etc/environment for later use by the bot.
 */
-import { createWriteStream } from "fs";
+import { readFileSync, createWriteStream } from "fs";
 
 const [
   ,
   ,
-  parameterString,
+  envFilePath = "temp.env",
   envPrefix = "/prod/",
   envPath = "/etc/environment",
 ] = process.argv;
-console.log(`Param string '${parameterString}'`);
-const { Parameters } = JSON.parse(parameterString);
+console.log(`Env file path ${envFilePath}`);
+const { Parameters } = JSON.parse(readFileSync(envFilePath).toString());
 console.log(`Parameters: ${JSON.stringify(Parameters)}`);
 const stream = createWriteStream(envPath, { flags: "a" });
 Parameters.forEach(({ Name, Value }) => {
