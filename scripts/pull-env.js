@@ -12,9 +12,7 @@ const [
   envPrefix = "/prod/",
   envPath = "/etc/environment",
 ] = process.argv;
-console.log(`Env file path ${envFilePath}`);
 const { Parameters } = JSON.parse(readFileSync(envFilePath).toString());
-console.log(`Parameters: ${JSON.stringify(Parameters)}`);
 const stream = createWriteStream(envPath, { flags: "a" });
 Parameters.forEach(({ Name, Value }) => {
   const name = Name.replace(envPrefix, "");
