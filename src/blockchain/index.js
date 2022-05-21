@@ -33,6 +33,7 @@ const {
   ETHERSCAN_API_KEY,
   INFURA_PROJECT_ID,
   POCKET_PROJECT_ID,
+  POCKET_SECRET_KEY,
   ALCHEMY_API_KEY,
   NFT_SCAN_API_ID,
   NFT_SCAN_SECRET,
@@ -40,7 +41,10 @@ const {
 
 const ethProvider = getDefaultProvider("homestead", {
   infura: INFURA_PROJECT_ID,
-  pocket: POCKET_PROJECT_ID,
+  pocket: {
+    applicationId: POCKET_PROJECT_ID,
+    applicationSecretKey: POCKET_SECRET_KEY,
+  },
   alchemy: ALCHEMY_API_KEY,
 });
 
