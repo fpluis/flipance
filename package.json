@@ -1,5 +1,5 @@
 {
-  "name": "flipance-backend",
+  "name": "flipance",
   "version": "0.0.1",
   "private": true,
   "dependencies": {
@@ -29,6 +29,8 @@
     "setup-db": "node --experimental-vm-modules scripts/setup-db.js",
     "register-commands": "node --experimental-vm-modules scripts/register-commands.js",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
-    "deploy": "terraform apply -var-file=\"example.tfvars\""
+    "setup-deployment": "terraform init -backend-config=backend.conf",
+    "deploy": "terraform apply -var-file=\"secret.tfvars\"",
+    "pull-env": "node --experimental-vm-modules scripts/pull-env.js"
   }
 }
