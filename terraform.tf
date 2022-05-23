@@ -152,6 +152,8 @@ resource "aws_ssm_parameter" "DB_PASSWORD" {
 data "template_file" "userdata" {
   template = file("${path.module}/scripts/startup.sh")
   vars = {
+    GITHUB_REPO_IDENTIFIER       = var.GITHUB_REPO_IDENTIFIER
+    REPO_IS_PUBLIC               = var.GITHUB_TOKEN == ""
     GITHUB_TOKEN_PARAM           = aws_ssm_parameter.GITHUB_TOKEN.name
     ETHERSCAN_API_KEY_PARAM      = aws_ssm_parameter.ETHERSCAN_API_KEY.name
     INFURA_PROJECT_ID_PARAM      = aws_ssm_parameter.INFURA_PROJECT_ID.name

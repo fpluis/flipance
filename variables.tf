@@ -110,6 +110,12 @@ variable "GITHUB_TOKEN" {
   default     = ""
 }
 
+variable "GITHUB_REPO_IDENTIFIER" {
+  type = string
+  description = "The Github username and repo name for the bot. Example: 'fpluis/flipance' is the identifier for the original repo."
+  default = "fpluis/flipance"
+}
+
 variable "DB_HOSTNAME" {
   type        = string
   description = "Http host for the PostgreSQL database."
