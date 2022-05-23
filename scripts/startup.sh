@@ -10,9 +10,14 @@ curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
 sudo apt install awscli curl nodejs postgresql postgresql-contrib -y
 echo "Tools installed"
 
-GITHUB_TOKEN=$(aws ssm get-parameter --region=us-east-1 --name ${GITHUB_TOKEN_PARAM} --with-decryption --query Parameter.Value | tr -d \")
+if [ ${REPO_IS_PUBLIC} ]; then
+  git clone https://github.com/${GITHUB_REPO_IDENTIFIER}.git
+else
+  echo "No github token. Pulling assuming the repo is public"
+  GITHUB_TOKEN=$(aws ssm get-parameter --region=us-east-1 --name ${GITHUB_TOKEN_PARAM} --with-decryption --query Parameter.Value | tr -d \")
+  git clone https://$GITHUB_TOKEN@github.com/${GITHUB_REPO_IDENTIFIER}.git
+fi
 
-git clone https://$GITHUB_TOKEN@github.com/fpluis/flipance.git
 echo "Pulled the repo"
 
 cd flipance
