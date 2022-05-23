@@ -157,7 +157,7 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   );
   let content;
   if (currentAlerts.length === 0) {
-    content = `You have not set up any wallet alerts. These are the server's alerts:${walletAlertList}.`;
+    content = `You have not set up any wallet alerts. These are the server's alerts:${collectionAlertList}.`;
   } else if (guildAlerts.length === 0) {
     content = `These are your wallet alerts:${walletAlertList}.\n\nThere are no server alerts.`;
   } else {
@@ -267,35 +267,41 @@ const handleWalletAlert = async ({
   }
 };
 
-const handleDeleteWallet = async ({ dbClient, interaction }) => {
+const handleDeleteAlert = async ({ dbClient, interaction }) => {
   const {
+    guildId,
     user: { id: discordId },
+    memberPermissions,
   } = interaction;
   await interaction.deferReply({
     content: "Deleting your alert...",
     ephemeral: true,
   });
-  const address = interaction.options.getString("address");
-  const nickname = interaction.options.getString("nickname");
-  if (address != null && !isValidAddress(address)) {
-    return interaction.editReply({
-      content: `Address "${address}" is invalid. Please introduce a valid address.`,
-      ephemeral: true,
-    });
-  }
+  const alert = interaction.options.getString("alert");
+  const address = isValidAddress(alert) ? alert : null;
+  const nickname = isValidNickname(alert) ? alert : null;
 
-  if (nickname != null && !isValidNickname(nickname)) {
-    return interaction.editReply({
-      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
-      ephemeral: true,
-    });
-  }
+  const { result } = await dbClient
+    .deleteAlert({
+      discordId,
+      address,
+      nickname,
+    })
+    .then(({ result }) => {
+      if (
+        result === "missing-alert" &&
+        memberPermissions.has("ADMINISTRATOR")
+      ) {
+        return dbClient.deleteAlert({
+          discordId: guildId,
+          address,
+          nickname,
+        });
+      }
 
-  const { result } = await dbClient.deleteAlert({
-    discordId,
-    address,
-    nickname,
-  });
+      return { result };
+    });
+
   const identifier =
     address == null ? `with nickname ${nickname}` : `for address ${address}`;
   switch (result) {
@@ -306,58 +312,7 @@ const handleDeleteWallet = async ({ dbClient, interaction }) => {
       });
     case "missing-arguments":
       return interaction.editReply({
-        content: `Please specify either an address or a nickname to delete.`,
-        ephemeral: true,
-      });
-    case "missing-alert":
-    default:
-      return interaction.editReply({
-        content: `You have no alert set up ${identifier}.`,
-        ephemeral: true,
-      });
-  }
-};
-
-const handleDeleteCollection = async ({ dbClient, interaction }) => {
-  const { guildId: discordId, memberPermissions } = interaction;
-  await interaction.deferReply({
-    content: "Deleting your alert...",
-    ephemeral: true,
-  });
-  if (!memberPermissions.has("ADMINISTRATOR")) {
-    return interaction.editReply({
-      content: "You need administrator permission to remove collection alerts.",
-      ephemeral: true,
-    });
-  }
-
-  const address = interaction.options.getString("address");
-  const nickname = interaction.options.getString("nickname");
-  if (address != null && !isValidAddress(address)) {
-    return interaction.editReply({
-      content: `Address "${address}" is invalid. Please introduce a valid address.`,
-      ephemeral: true,
-    });
-  }
-
-  if (nickname != null && !isValidNickname(nickname)) {
-    return interaction.editReply({
-      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
-      ephemeral: true,
-    });
-  }
-
-  const { result } = await dbClient.deleteAlert({
-    discordId,
-    address,
-    nickname,
-  });
-  const identifier =
-    address == null ? `with nickname ${nickname}` : `for address ${address}`;
-  switch (result) {
-    case "success":
-      return interaction.editReply({
-        content: `Alert ${identifier} successfully removed.`,
+        content: `Please specify a valid address or nickname to delete.`,
         ephemeral: true,
       });
     case "missing-alert":
@@ -470,7 +425,7 @@ const handleSettings = async ({ dbClient, interaction }) => {
         content:
           object == null && alertOption != null
             ? `You have no alert set up for "${alertOption}"`
-            : describeSettings({ ...object, type: "user" }),
+            : describeSettings(object),
         ephemeral: true,
       });
     case "missing-user":
@@ -544,18 +499,12 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
   });
 };
 
-const handleUpdatePreferencesResponse = async (
-  interaction,
-  result,
-  object,
-  type
-) => {
+const handleUpdatePreferencesResponse = async (interaction, result, object) => {
   if (result === "success") {
     return interaction.editReply({
-      content: `Your preferences have been saved.\n\n${describeSettings({
-        ...object,
-        type,
-      })}`,
+      content: `Your preferences have been saved.\n\n${describeSettings(
+        object
+      )}`,
       ephemeral: true,
     });
   }
@@ -578,6 +527,7 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
   const {
     guildId,
     user: { id: discordId },
+    memberPermissions,
   } = interaction;
   const maxOfferFloorDifference = interaction.options.getNumber("percentage");
   const alert = interaction.options.getString("alert");
@@ -587,6 +537,7 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
   });
   const address = isValidAddress(alert) ? alert : null;
   const nickname = isValidNickname(alert) ? alert : null;
+
   const { result, object } = await dbClient
     .setMaxFloorDifference({
       discordId,
@@ -595,7 +546,10 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
       nickname,
     })
     .then(({ result, object }) => {
-      if (result === "missing-user") {
+      if (
+        (result === "missing-user" || result === "missing-alert") &&
+        memberPermissions.has("ADMINISTRATOR")
+      ) {
         return dbClient.setMaxFloorDifference({
           discordId: guildId,
           maxOfferFloorDifference,
@@ -606,12 +560,64 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(
-    interaction,
-    result,
-    { ...object, address, nickname },
-    alert == null ? "user" : "alert"
-  );
+  return handleUpdatePreferencesResponse(interaction, result, {
+    ...object,
+    address,
+    nickname,
+  });
+};
+
+const handleSetNickname = async ({ dbClient, interaction }) => {
+  const {
+    guildId,
+    user: { id: discordId },
+    memberPermissions,
+  } = interaction;
+  const nickname = interaction.options.getString("nickname");
+  const address = interaction.options.getString("address");
+  await interaction.deferReply({
+    content: "Fetching your preferences...",
+    ephemeral: true,
+  });
+  if (!isValidAddress(address)) {
+    return interaction.editReply({
+      content: `Address "${address}" is invalid. Please introduce a valid address.`,
+      ephemeral: true,
+    });
+  }
+
+  if (!isValidNickname(nickname)) {
+    return interaction.editReply({
+      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
+      ephemeral: true,
+    });
+  }
+
+  const { result, object } = await dbClient
+    .setAlertNickname({
+      discordId,
+      address,
+      nickname,
+    })
+    .then(({ result, object }) => {
+      if (
+        result === "missing-alert" &&
+        memberPermissions.has("ADMINISTRATOR")
+      ) {
+        return dbClient.setAlertNickname({
+          discordId: guildId,
+          address,
+          nickname,
+        });
+      }
+
+      return { result, object };
+    });
+  return handleUpdatePreferencesResponse(interaction, result, {
+    ...object,
+    address,
+    nickname,
+  });
 };
 
 const handleCommand = async (args) => {
@@ -623,10 +629,8 @@ const handleCommand = async (args) => {
       return handleWalletAlert(args);
     case "collectionalert":
       return handleCollectionAlert(args);
-    case "deletewalletalert":
-      return handleDeleteWallet(args);
-    case "deletecollectionalert":
-      return handleDeleteCollection(args);
+    case "deletealert":
+      return handleDeleteAlert(args);
     case "settings":
       return handleSettings(args);
     case "setallowedmarketplaces":
@@ -635,6 +639,8 @@ const handleCommand = async (args) => {
       return handleSetAllowedEvents(args);
     case "setmaxofferfloordifference":
       return handleSetMaxOfferFloorDifference(args);
+    case "setnickname":
+      return handleSetNickname(args);
     case "help":
     default:
       return interaction.reply({
@@ -654,6 +660,7 @@ const handleAllowedMarketplacesPick = async ({
     guildId,
     user: { id: discordId },
     values: allowedMarketplaces,
+    memberPermissions,
   } = interaction;
   await interaction.deferReply({
     content: "Updating your preferences...",
@@ -669,7 +676,10 @@ const handleAllowedMarketplacesPick = async ({
       nickname,
     })
     .then(({ result, object }) => {
-      if (result === "missing-user") {
+      if (
+        (result === "missing-user" || result === "missing-alert") &&
+        memberPermissions.has("ADMINISTRATOR")
+      ) {
         return dbClient.setAllowedMarketplaces({
           discordId: guildId,
           allowedMarketplaces,
@@ -680,12 +690,11 @@ const handleAllowedMarketplacesPick = async ({
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(
-    interaction,
-    result,
-    { ...object, address, nickname },
-    alert == null ? "user" : "alert"
-  );
+  return handleUpdatePreferencesResponse(interaction, result, {
+    ...object,
+    address,
+    nickname,
+  });
 };
 
 const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
@@ -693,6 +702,7 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
     guildId,
     user: { id: discordId },
     values: allowedEvents,
+    memberPermissions,
   } = interaction;
   await interaction.deferReply({
     content: "Updating your preferences...",
@@ -708,7 +718,10 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
       nickname,
     })
     .then(({ result, object }) => {
-      if (result === "missing-user") {
+      if (
+        (result === "missing-user" || result === "missing-alert") &&
+        memberPermissions.has("ADMINISTRATOR")
+      ) {
         return dbClient.setAllowedEvents({
           discordId: guildId,
           allowedEvents,
@@ -719,12 +732,11 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(
-    interaction,
-    result,
-    { ...object, address, nickname },
-    alert == null ? "user" : "alert"
-  );
+  return handleUpdatePreferencesResponse(interaction, result, {
+    ...object,
+    address,
+    nickname,
+  });
 };
 
 const handleSelectMenu = async (args) => {

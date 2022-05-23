@@ -18,115 +18,123 @@ const [, , testArg] = process.argv;
 const commands = [
   new SlashCommandBuilder()
     .setName("help")
-    .setDescription("Provides information about the bot's command"),
+    .setDescription("Provides information about the bot and its commands."),
   new SlashCommandBuilder()
     .setName("listalerts")
-    .setDescription("List your active wallet alerts"),
+    .setDescription(
+      "List your active wallet alerts on this server and the server's collection alerts."
+    ),
   new SlashCommandBuilder()
     .setName("walletalert")
     .setDescription(
-      "Notifies you of a wallet's NFT activity across marketplaces"
+      "Creates an alert to track a wallet's NFT activity across marketplaces."
     )
     .addStringOption((option) =>
       option
         .setName("address")
-        .setDescription("Wallet's address")
+        .setDescription("The Ethereum address of the wallet you want to track.")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("nickname")
         .setDescription(
-          `Wallet's nickname (1-${MAX_NICKNAME_LENGTH} characters, no spaces)`
+          `Wallet's nickname (must have between 1-${MAX_NICKNAME_LENGTH} characters, no spaces).`
         )
     ),
   new SlashCommandBuilder()
     .setName("collectionalert")
     .setDescription(
-      "Notifies you of a collection's NFT activity across marketplaces"
+      "Notifies you of a collection's NFT activity across marketplaces."
     )
     .addStringOption((option) =>
       option
         .setName("address")
-        .setDescription("Collection's address")
+        .setDescription(
+          "The Ethereum address of the collection you want to track."
+        )
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("nickname")
         .setDescription(
-          `Collection's  nickname (1-${MAX_NICKNAME_LENGTH} characters, no spaces)`
+          `Collection's nickname (must have between 1-${MAX_NICKNAME_LENGTH} characters, no spaces).`
         )
     ),
   new SlashCommandBuilder()
-    .setName("deletecollectionalert")
+    .setName("deletealert")
     .setDescription(
-      "Deletes the server's alert for the specified collection address or nickname"
+      "Deletes the alert for the specified collection address or nickname."
     )
     .addStringOption((option) =>
-      option.setName("address").setDescription("Address being watched")
-    )
-    .addStringOption((option) =>
-      option.setName("nickname").setDescription(`Wallet's nickname`)
-    ),
-  new SlashCommandBuilder()
-    .setName("deletewalletalert")
-    .setDescription(
-      "Deletes your alert for the specified address or wallet nickname"
-    )
-    .addStringOption((option) =>
-      option.setName("address").setDescription("Address being watched")
-    )
-    .addStringOption((option) =>
-      option.setName("nickname").setDescription(`Collection's nickname`)
+      option
+        .setName("alert")
+        .setDescription("Alert's nickname or address.")
+        .setRequired(true)
     ),
   new SlashCommandBuilder()
     .setName("settings")
-    .setDescription("Display your current settings")
+    .setDescription("Display your current settings.")
     .addStringOption((option) =>
       option
         .setName("alert")
         .setDescription(
-          "Alert nickname or address. Leave empty to see your account-wide settings"
+          "Alert's nickname or address. Leave empty to see your account settings."
         )
     ),
   new SlashCommandBuilder()
     .setName("setallowedmarketplaces")
-    .setDescription("Choose the marketplaces you wish to receive alerts from")
+    .setDescription("Choose the marketplaces you wish to receive alerts from.")
     .addStringOption((option) =>
       option
         .setName("alert")
         .setDescription(
-          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert's nickname or address. Leave empty to change your account settings."
         )
     ),
   new SlashCommandBuilder()
     .setName("setallowedevents")
-    .setDescription("Choose the NFT events you wish to be alerted of")
+    .setDescription("Choose the NFT events you wish to be alerted of.")
     .addStringOption((option) =>
       option
         .setName("alert")
         .setDescription(
-          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert's nickname or address. Leave empty to change your account settings."
         )
     ),
   new SlashCommandBuilder()
     .setName("setmaxofferfloordifference")
     .setDescription(
-      "Set the maximum deviation from the collection's floor that an offer may have"
+      "Set the maximum deviation from the collection's floor that an offer may have."
     )
     .addNumberOption((option) =>
       option
         .setName("percentage")
-        .setDescription("Difference from the floor as percentage i.e. '20'")
+        .setDescription("Difference from the floor as a percentage i.e. '20'.")
         .setRequired(true)
     )
     .addStringOption((option) =>
       option
         .setName("alert")
         .setDescription(
-          "Alert nickname or address which you want to edit. Leave empty to change your account-wide settings"
+          "Alert's nickname or address. Leave empty to change your account settings."
         )
+    ),
+  new SlashCommandBuilder()
+    .setName("setnickname")
+    .setDescription("Set an alert's nickname.")
+    .addStringOption((option) =>
+      option
+        .setName("address")
+        .setDescription("The alert's address.")
+        .setRequired(true)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("nickname")
+        .setDescription("The new nickname for the alert.")
+        .setRequired(true)
     ),
 ].map((command) => command.toJSON());
 
