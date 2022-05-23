@@ -449,7 +449,14 @@ export const createDbClient = async ({
       userId = user.id;
     }
 
-    const values = [type, userId, address, tokens, new Date(), new Date()];
+    const values = [
+      type,
+      userId,
+      address.toLowerCase(),
+      tokens,
+      new Date(),
+      new Date(),
+    ];
     const props = [
       "type",
       "user_id",
@@ -507,10 +514,10 @@ export const createDbClient = async ({
 
     const { rows } = await client.query(
       `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
-      [discordId, address, nickname]
+      [discordId, address.toLowerCase(), nickname]
     );
     return {
-      result: rows.length > 0 ? "success" : "error",
+      result: rows.length > 0 ? "success" : "missing-alert",
       object: toAlertObject(rows[0]),
     };
   };
@@ -527,7 +534,7 @@ export const createDbClient = async ({
       values = [discordId, nickname];
     } else {
       identifierCondition = `address = $2`;
-      values = [discordId, address];
+      values = [discordId, address.toLowerCase()];
     }
 
     const result = await client.query(
@@ -557,7 +564,7 @@ export const createDbClient = async ({
       ON user_settings.id = (\
         SELECT settings_id FROM users WHERE users.id = alerts.user_id)\
       WHERE address = $1`,
-      [address]
+      [address.toLowerCase()]
     );
     const { rows } = result;
     return { result: "success", objects: rows.map(toAlertObject) };
@@ -648,7 +655,7 @@ export const createDbClient = async ({
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
     if (address != null) {
-      values.push(address);
+      values.push(address.toLowerCase());
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     } else if (nickname != null) {
@@ -687,7 +694,7 @@ export const createDbClient = async ({
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
     if (address != null) {
-      values.push(address);
+      values.push(address.toLowerCase());
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     } else if (nickname != null) {
@@ -726,7 +733,7 @@ export const createDbClient = async ({
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
     if (address != null) {
-      values.push(address);
+      values.push(address.toLowerCase());
       condition =
         "id = (SELECT settings_id FROM alerts WHERE address = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     } else if (nickname != null) {
@@ -757,18 +764,30 @@ export const createDbClient = async ({
     return { result: "success", objects: rows.map(toOfferObject) };
   };
 
-  const setCollectionOffer = async ({ address, price, endsAt } = {}) => {
+  const setCollectionOffer = async ({
+    address,
+    price,
+    endsAt,
+    marketplace = "looksRare",
+  } = {}) => {
     if (address == null || price == null || endsAt == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const values = [address, price, new Date(endsAt), new Date(), ""];
+    const values = [
+      address.toLowerCase(),
+      price,
+      new Date(endsAt),
+      new Date(),
+      marketplace,
+      "",
+    ];
     const { rows } = await client.query(
-      `INSERT INTO offers (collection, price, ends_at, created_at, token_id)\
-      VALUES($1, $2, $3, $4, $5)\
+      `INSERT INTO offers (collection, price, ends_at, created_at, marketplace, token_id)\
+      VALUES($1, $2, $3, $4, $5, $6)\
       ON CONFLICT (collection, token_id)\
       DO\
-        UPDATE SET collection = $1, price = $2, ends_at = $3, created_at = $4, token_id = $5\
+        UPDATE SET collection = $1, price = $2, ends_at = $3, created_at = $4, marketplace = $5, token_id = $6\
       RETURNING *`,
       values
     );
@@ -792,14 +811,18 @@ export const createDbClient = async ({
     return { result: "success", object: toCollectionFloorObject(rows[0]) };
   };
 
-  const setCollectionFloor = async ({ collection, price } = {}) => {
+  const setCollectionFloor = async ({
+    collection,
+    price,
+    marketplace = "looksRare",
+  } = {}) => {
     if (collection == null || price == null) {
       return { result: "missing-arguments", object: null };
     }
 
     const { rows } = await client.query(
-      `INSERT INTO floor_prices (collection, created_at, price) VALUES ($1, $2, $3) RETURNING *`,
-      [collection, new Date(), price]
+      `INSERT INTO floor_prices (collection, created_at, price, marketplace) VALUES ($1, $2, $3, $4) RETURNING *`,
+      [collection, new Date(), price, marketplace]
     );
     return {
       result: rows.length > 0 ? "success" : "error",

@@ -469,6 +469,7 @@ test("setCollectionOffer with a new collection", async () => {
     address: collection1,
     price: 1,
     endsAt: tomorrow,
+    marketplace: "looksRare",
   });
   expect(result).toBe("success");
   const { objects: offers } = await dbClient.getAllCollectionOffers();
@@ -477,6 +478,7 @@ test("setCollectionOffer with a new collection", async () => {
     collection: collection1,
     price: 1,
     endsAt: new Date(tomorrow),
+    marketplace: "looksRare",
   });
 });
 
@@ -487,6 +489,7 @@ test("setCollectionOffer overwriting an existing collection", async () => {
     address: collection1,
     price: 1,
     endsAt: tomorrow,
+    marketplace: "looksRare",
   });
   expect(firstResult).toBe("success");
   const now2 = new Date();
@@ -495,6 +498,7 @@ test("setCollectionOffer overwriting an existing collection", async () => {
     address: collection1,
     price: 4,
     endsAt: inTwoDates,
+    marketplace: "looksRare",
   });
   expect(secondResult).toBe("success");
   const { objects: offers } = await dbClient.getAllCollectionOffers();
@@ -503,6 +507,7 @@ test("setCollectionOffer overwriting an existing collection", async () => {
     collection: collection1,
     price: 4,
     endsAt: new Date(inTwoDates),
+    marketplace: "looksRare",
   });
 });
 
@@ -864,7 +869,7 @@ test("setAlertNickname without a matching alert", async () => {
     address: address2,
     nickname: "deposit-1",
   });
-  expect(result).toBe("error");
+  expect(result).toBe("missing-alert");
   expect(alert).toBe(null);
 });
 
@@ -907,12 +912,13 @@ test("setCollectionFloor with one argument", async () => {
 
 test("setCollectionFloor with both arguments", async () => {
   const { result, object: collectionFloor } = await dbClient.setCollectionFloor(
-    { collection: collection1, price: 0.5 }
+    { collection: collection1, price: 0.5, marketplace: "looksRare" }
   );
   expect(result).toBe("success");
   expect(collectionFloor).toMatchObject({
     collection: collection1,
     price: 0.5,
+    marketplace: "looksRare",
   });
 });
 
