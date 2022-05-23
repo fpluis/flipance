@@ -51,7 +51,7 @@ if (testArg === "test") {
   console.log(`Starting the client in TEST mode`);
 }
 
-const isAllowedByUserPreferences = (
+const isAllowedByPreferences = (
   { marketplace, saleType, collectionFloor, price },
   {
     allowedMarketplaces = allMarketplaceIds,
@@ -91,7 +91,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
     });
     if (sellerAlerts) {
       sellerAlerts
-        .filter((alert) => isAllowedByUserPreferences(args, alert))
+        .filter((alert) => isAllowedByPreferences(args, alert))
         .forEach(async ({ discordId }) => {
           try {
             const profit = await calculateProfit(args);
@@ -119,7 +119,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
     });
     if (buyerAlerts) {
       buyerAlerts
-        .filter((buyer) => isAllowedByUserPreferences(args, buyer))
+        .filter((buyer) => isAllowedByPreferences(args, buyer))
         .forEach(async ({ discordId }) => {
           try {
             const discordUser = await discordClient.users.fetch(discordId);
@@ -143,36 +143,46 @@ const notifySales = async ({ discordClient, dbClient }) => {
     const { objects: collectionAlerts } = await dbClient.getAlertsByAddress({
       address: collectionAddress.toLowerCase(),
     });
-    if (collectionAlerts) {
-      collectionAlerts.forEach(async ({ channelId }) => {
-        if (channelId == null) {
-          return;
-        }
+    if (collectionAlerts.length > 0) {
+      collectionAlerts
+        .filter((alert) => isAllowedByPreferences(args, alert))
+        .forEach(async ({ channelId }) => {
+          if (channelId == null) {
+            return;
+          }
 
-        try {
-          const channel = await discordClient.channels.fetch(channelId);
-          const embed = await buildEmbed(args);
-          channel.send(embed);
-        } catch (error) {
-          logError(
-            `Error sending collection alert to channel ${channelId}: ${error.toString()}`
-          );
-        }
-      });
+          try {
+            const channel = await discordClient.channels.fetch(channelId);
+            const embed = await buildEmbed(args);
+            channel.send(embed);
+          } catch (error) {
+            logError(
+              `Error sending collection alert to channel ${channelId}: ${error.toString()}`
+            );
+          }
+        });
     }
   };
 
   const handleOffer = async (saleType, args) => {
-    const { watchers, collection, price, endsAt } = args;
+    const { watchers, collection, price, endsAt, marketplace } = args;
     args.saleType = saleType;
     await dbClient.setCollectionOffer({
       address: collection,
       price,
       endsAt,
+      marketplace,
     });
     watchers.forEach(async (watcher) => {
-      const { discordId, channelId, tokenIds, settings } = watcher;
-      if (isAllowedByUserPreferences(args, settings)) {
+      const { discordId, channelId, tokenIds } = watcher;
+      // console.log(
+      //   `Checking if offer with args ${JSON.stringify(
+      //     args
+      //   )} is allowed by prefs ${JSON.stringify(
+      //     watcher
+      //   )}: ${isAllowedByPreferences(args, watcher)}`
+      // );
+      if (isAllowedByPreferences(args, watcher)) {
         try {
           const target = await (channelId == null
             ? discordClient.users.fetch(discordId)
@@ -221,7 +231,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
 
   const toCollectionMap = (alerts, offers) => {
     const collectionMap = alerts.reduce(
-      (collectionMap, { id, tokens, discordId, channelId, ...settings }) => {
+      (collectionMap, { id, tokens, ...alert }) => {
         const userCollections = tokens.reduce((collections, token) => {
           const [collection, tokenId] = token.split("/");
           const tokenIds = collections[collection] || [];
@@ -232,9 +242,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
           const { watchers: currentWatchers = [] } =
             collectionMap[collection] || {};
           collectionMap[collection] = {
-            watchers: currentWatchers.concat([
-              { id, tokenIds, discordId, channelId, settings },
-            ]),
+            watchers: currentWatchers.concat([{ ...alert, id, tokenIds }]),
           };
         });
         offers.forEach(({ collection, price, endsAt }) => {
@@ -265,6 +273,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
           await dbClient.setCollectionFloor({
             collection,
             price: collectionFloor,
+            marketplace: "looksRare",
           });
           return collectionFloor;
         })
