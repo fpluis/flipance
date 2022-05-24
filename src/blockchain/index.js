@@ -357,8 +357,8 @@ const openSeaEventListener = (emit) => {
       seller = taker;
     } else {
       saleType = "acceptAsk";
-      buyer = maker;
-      seller = taker;
+      buyer = taker;
+      seller = maker;
     }
 
     emit(saleType, {
