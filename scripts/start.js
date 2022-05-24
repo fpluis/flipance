@@ -78,7 +78,7 @@ const isAllowedByPreferences = (
   return true;
 };
 
-const notifySales = async ({ discordClient, dbClient }) => {
+const notifySales = async ({ dbClient }) => {
   const handleSale = async (args) => {
     const {
       seller: sellerAddress = "",
@@ -152,8 +152,10 @@ const notifySales = async ({ discordClient, dbClient }) => {
           }
 
           try {
+            const embed = await buildEmbed({
+              args,
+            });
             const channel = await discordClient.channels.fetch(channelId);
-            const embed = await buildEmbed(args);
             channel.send(embed);
           } catch (error) {
             logError(
@@ -175,21 +177,15 @@ const notifySales = async ({ discordClient, dbClient }) => {
     });
     watchers.forEach(async (watcher) => {
       const { discordId, channelId, tokenIds } = watcher;
-      // console.log(
-      //   `Checking if offer with args ${JSON.stringify(
-      //     args
-      //   )} is allowed by prefs ${JSON.stringify(
-      //     watcher
-      //   )}: ${isAllowedByPreferences(args, watcher)}`
-      // );
       if (isAllowedByPreferences(args, watcher)) {
         try {
-          const target = await (channelId == null
+          const isUserMessage = channelId == null;
+          const target = await (isUserMessage
             ? discordClient.users.fetch(discordId)
             : discordClient.channels.fetch(channelId));
           const embed = await buildEmbed({
             ...args,
-            target: channelId == null ? "user" : "server",
+            target: isUserMessage ? "user" : "server",
             saleType,
             tokenIds,
           });
@@ -327,7 +323,7 @@ const notifySales = async ({ discordClient, dbClient }) => {
 discordClient.once("ready", async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   const dbClient = await createDbClient();
-  notifySales({ discordClient, dbClient });
+  notifySales({ dbClient });
   await moralisClient
     .start({
       serverUrl: MORALIS_SERVER_URL,
