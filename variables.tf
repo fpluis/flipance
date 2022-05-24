@@ -157,3 +157,15 @@ variable "MAX_OFFER_FLOOR_DIFFERENCE" {
   description = "Default max. difference as a percentage between the floor and the offer for all alerts. Example: if you set this variable at 15, alerts by default will only notify if an offer is 85% or more of the current floor for the collection."
   default     = 15
 }
+
+variable "DEFAULT_USER_ALARM_LIMIT" {
+  type        = string
+  description = "Default max number of alerts a user can have. Each user in the database has a personal limit, so it can be changed for a specific user by querying the database."
+  default     = 3
+}
+
+variable "DEFAULT_SERVER_ALARM_LIMIT" {
+  type        = string
+  description = "Default max number of alerts a server can have. Each server in the database has its own limit, and it can be changed for a specific server by querying the database."
+  default     = 1
+}

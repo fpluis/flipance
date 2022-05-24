@@ -176,6 +176,8 @@ data "template_file" "userdata" {
     DB_PASSWORD                  = aws_ssm_parameter.DB_PASSWORD.name
     MAX_NICKNAME_LENGTH          = var.MAX_NICKNAME_LENGTH
     MAX_OFFER_FLOOR_DIFFERENCE   = var.MAX_OFFER_FLOOR_DIFFERENCE
+    DEFAULT_USER_ALARM_LIMIT     = var.DEFAULT_USER_ALARM_LIMIT
+    DEFAULT_SERVER_ALARM_LIMIT   = var.DEFAULT_SERVER_ALARM_LIMIT
   }
 }
 
