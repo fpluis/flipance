@@ -145,11 +145,6 @@ export default async ({
   let url = `https://etherscan.io/tx/${transactionHash}`;
   const collectionUrl = `https://looksrare.org/collections/${collection}`;
   if (saleType === "offer") {
-    console.log(
-      `Offer on collection with token id ${tokenId}, token ids ${JSON.stringify(
-        tokenIds
-      )}`
-    );
     const priceDescription =
       collectionFloor == null
         ? `${priceString}`
