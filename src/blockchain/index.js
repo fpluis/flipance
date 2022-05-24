@@ -239,7 +239,7 @@ const getReceiptInfo = async (event, eventType) => {
     if (erc721TransferLog) {
       const { address: collection, topics } = erc721TransferLog;
       const [, from, to, tokenIdHex] = topics;
-      const tokenId = parseInt(Number(tokenIdHex), 16);
+      const tokenId = parseInt(Number(tokenIdHex), 10);
       const tokenContract = new ethers.Contract(
         collection,
         erc721Abi,
