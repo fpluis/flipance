@@ -42,7 +42,7 @@ const getMetadata = async (metadataURI, tokenId, transactionHash) => {
     : metadataURI.startsWith("ar://")
     ? resolveArweaveURI(metadataURI)
     : metadataURI;
-  if (/\{id\}/.test(url)) {
+  if (/\{id\}/.test(url) && tokenId != null) {
     url = url.replace(`{id}`, tokenId);
   }
 
@@ -123,12 +123,18 @@ export default async ({
   metadataUri,
   profit,
   collectionFloor,
-  tokenIds,
-  tokenId = tokenIds[0],
+  tokenIds = [],
+  tokenId: originalTokenId,
   target,
   endsAt,
 }) => {
-  const priceString = `${priceEth} ETH`;
+  const tokenId =
+    originalTokenId == null
+      ? tokenIds.length > 0
+        ? tokenIds[0]
+        : null
+      : originalTokenId;
+  const priceString = `${Number(priceEth).toFixed(3)} ETH`;
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash)
     : Promise.resolve({}));
@@ -137,7 +143,13 @@ export default async ({
   let description;
   let title = "New sale!";
   let url = `https://etherscan.io/tx/${transactionHash}`;
+  const collectionUrl = `https://looksrare.org/collections/${collection}`;
   if (saleType === "offer") {
+    console.log(
+      `Offer on collection with token id ${tokenId}, token ids ${JSON.stringify(
+        tokenIds
+      )}`
+    );
     const priceDescription =
       collectionFloor == null
         ? `${priceString}`
@@ -165,7 +177,7 @@ export default async ({
     }
 
     title = "New offer!";
-    url = `https://looksrare.org/collections/${collection}/${tokenId}`;
+    url = tokenId == null ? collectionUrl : `${collectionUrl}/${tokenId}`;
   } else if (isBuyer) {
     description =
       saleType === "acceptOffer"
@@ -284,7 +296,9 @@ export default async ({
 
   embed.fields.push({
     name: "Marketplace link",
-    value: `[View on LooksRare](https://looksrare.org/collections/${collection}/${tokenId})`,
+    value: `[View on LooksRare](${
+      tokenId == null ? collectionUrl : `${collectionUrl}/${tokenId}`
+    })`,
   });
 
   const files = [];
