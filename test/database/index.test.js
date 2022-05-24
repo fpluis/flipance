@@ -700,7 +700,9 @@ test("getAlertsByAddress with a setting present in the alert", async () => {
   } = await dbClient.getAlertsByAddress({
     address: address1,
   });
-  expect(alert.maxOfferFloorDifference).toBe(MAX_OFFER_FLOOR_DIFFERENCE);
+  expect(alert.maxOfferFloorDifference).toBe(
+    Number(MAX_OFFER_FLOOR_DIFFERENCE)
+  );
   expect(alert.allowedMarketplaces).toMatchObject(allMarketplaceIds);
   expect(alert.allowedEvents).toMatchObject(["offer"]);
 });
