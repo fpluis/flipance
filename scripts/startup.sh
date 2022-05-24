@@ -46,5 +46,5 @@ echo "DB set up"
 
 sudo npm install forever -g
 echo "Forever installed"
-sudo forever start scripts/start.js test
+sudo forever start scripts/start.js
 echo "Process launched"
