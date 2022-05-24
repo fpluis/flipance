@@ -1,7 +1,7 @@
 # You can use this file as example of what goes in a secret .tfvars file
-# If you modify this file with your production keys, please rename it to 'secret.tfvars'
 
 # DO NOT COMMIT THIS FILE WITH YOUR ACTUAL API KEYS.
+# CREATE A COPY OF THIS, RENAME IT 'secret.tfvars' AND PUT THEM THERE
 
 ETHERSCAN_API_KEY          = "YOUR ETHERSCAN API"
 INFURA_PROJECT_ID          = "YOUR INFURA PROJECT ID"
