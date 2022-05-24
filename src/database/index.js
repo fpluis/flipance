@@ -50,7 +50,8 @@ export const isDbCreated = async ({
   });
 
   const dbExistsResult = await client.query(
-    `SELECT datname FROM pg_catalog.pg_database WHERE datname='${dbName}'`
+    `SELECT datname FROM pg_catalog.pg_database WHERE datname=$1`,
+    [dbName]
   );
   await client.release();
   await pool.end();
@@ -87,8 +88,8 @@ export const createDb = async ({
     throw error;
   });
 
-  console.log(`Created DB "${dbName}"`);
   await client.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8'`);
+  console.log(`Created DB "${dbName}"`);
   await client.release();
   return pool.end().then(() => true);
 };
