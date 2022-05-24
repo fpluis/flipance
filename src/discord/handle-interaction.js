@@ -80,9 +80,8 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
     });
   }
 
-  // Only need to include 1 token to be able to poll
-  // collection offers for this collection
-  const tokens = [`${address}/1`];
+  // The token for collection alert is set to an empty string.
+  const tokens = [`${address}/`];
   const { result } = await dbClient.createAlert({
     userId: user.id,
     channelId,
