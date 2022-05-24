@@ -148,7 +148,7 @@ variable "DB_NAME" {
 
 variable "MAX_NICKNAME_LENGTH" {
   type        = string
-  description = "Max. length alert nicknames may have."
+  description = "Max. length in characters that alert nicknames can have."
   default     = 50
 }
 
