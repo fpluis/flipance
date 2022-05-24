@@ -243,7 +243,7 @@ const toSettingsObject = (settings) => {
     ...props,
     maxOfferFloorDifference:
       max_offer_floor_difference == null
-        ? MAX_OFFER_FLOOR_DIFFERENCE
+        ? Number(MAX_OFFER_FLOOR_DIFFERENCE)
         : max_offer_floor_difference,
     allowedMarketplaces:
       allowed_marketplaces == null ? allMarketplaceIds : allowed_marketplaces,
@@ -283,6 +283,7 @@ const toAlertObject = (alert) => {
   const {
     settings_id: settingsId,
     user_id: userId,
+    discord_id: discordId,
     created_at: createdAt,
     synced_at: syncedAt,
     channel_id: channelId,
@@ -299,11 +300,12 @@ const toAlertObject = (alert) => {
     settingsId,
     userId,
     createdAt,
+    discordId,
     channelId,
     maxOfferFloorDifference:
       alert_max_offer_floor_difference == null
         ? user_max_offer_floor_difference == null
-          ? MAX_OFFER_FLOOR_DIFFERENCE
+          ? Number(MAX_OFFER_FLOOR_DIFFERENCE)
           : user_max_offer_floor_difference
         : alert_max_offer_floor_difference,
     allowedMarketplaces:
@@ -557,12 +559,14 @@ export const createDbClient = async ({
     }
 
     const result = await client.query(
-      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+      `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
       LEFT JOIN settings AS alert_settings\
       ON alert_settings.id = alerts.settings_id\
       LEFT JOIN settings AS user_settings\
       ON user_settings.id = (\
         SELECT settings_id FROM users WHERE users.id = alerts.user_id)\
+      LEFT JOIN users\
+      ON users.id = alerts.user_id\
       WHERE address = $1`,
       [address.toLowerCase()]
     );

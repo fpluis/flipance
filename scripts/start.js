@@ -89,7 +89,7 @@ const notifySales = async ({ dbClient }) => {
     const { objects: sellerAlerts } = await dbClient.getAlertsByAddress({
       address: sellerAddress.toLowerCase(),
     });
-    if (sellerAlerts) {
+    if (sellerAlerts.length > 0) {
       sellerAlerts
         .filter((alert) => isAllowedByPreferences(args, alert))
         .forEach(async ({ discordId }) => {
@@ -117,7 +117,7 @@ const notifySales = async ({ dbClient }) => {
     const { objects: buyerAlerts } = await dbClient.getAlertsByAddress({
       address: buyerAddress.toLowerCase(),
     });
-    if (buyerAlerts) {
+    if (buyerAlerts.length > 0) {
       buyerAlerts
         .filter((buyer) => isAllowedByPreferences(args, buyer))
         .forEach(async ({ discordId }) => {
@@ -153,7 +153,7 @@ const notifySales = async ({ dbClient }) => {
 
           try {
             const embed = await buildEmbed({
-              args,
+              ...args,
             });
             const channel = await discordClient.channels.fetch(channelId);
             channel.send(embed);
@@ -209,10 +209,11 @@ const notifySales = async ({ dbClient }) => {
     let index = 0;
     const { objects: alerts } = await dbClient.getAllAlerts();
     while (index < alerts) {
-      const [{ id, address, syncedAt }] = alerts[index];
+      const [{ id, address, type, syncedAt }] = alerts[index];
       if (
-        syncedAt == null ||
-        new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL
+        type === "wallet" &&
+        (syncedAt == null ||
+          new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL)
       ) {
         const tokens = await getAddressNFTs(moralisClient, address);
         await dbClient.setAlertTokens({ id, tokens });
@@ -230,8 +231,11 @@ const notifySales = async ({ dbClient }) => {
       (collectionMap, { id, tokens, ...alert }) => {
         const userCollections = tokens.reduce((collections, token) => {
           const [collection, tokenId] = token.split("/");
-          const tokenIds = collections[collection] || [];
-          collections[collection] = tokenIds.concat(tokenId);
+          if (tokenId.length > 0) {
+            const tokenIds = collections[collection] || [];
+            collections[collection] = tokenIds.concat(tokenId);
+          }
+
           return collections;
         }, {});
         Object.entries(userCollections).forEach(([collection, tokenIds]) => {
