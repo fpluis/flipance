@@ -10,7 +10,7 @@ As an NFT collector or trader, you can receive DMs whenever your NFTs sell, your
 
 ![](./assets/docs/looksrare-banner.png)
 
-We want to thank [LooksRare](https://looksrare.org/) for their sponsorship of this project.
+We want to thank [LooksRare](https://looksrare.org/) for funding this project.
 
 # Commands
 
