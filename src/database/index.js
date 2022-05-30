@@ -284,7 +284,6 @@ const toAlertObject = (alert) => {
   const {
     settings_id: settingsId,
     user_id: userId,
-    discord_id: discordId,
     created_at: createdAt,
     synced_at: syncedAt,
     channel_id: channelId,
@@ -301,7 +300,6 @@ const toAlertObject = (alert) => {
     settingsId,
     userId,
     createdAt,
-    discordId,
     channelId,
     maxOfferFloorDifference:
       alert_max_offer_floor_difference == null
