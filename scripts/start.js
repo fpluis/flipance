@@ -6,10 +6,12 @@ import { Client, Intents } from "discord.js";
 import {
   nftEventEmitter,
   calculateProfit,
-  pollCollectionOffers,
-  getCollectionFloor,
   createNFTClient,
 } from "../src/blockchain/index.js";
+import {
+  getCollectionFloor,
+  getCollectionOffers,
+} from "../src/looksrare-api/index.js";
 import logError from "../src/log-error.js";
 import {
   handleInteraction,
@@ -18,6 +20,7 @@ import {
 } from "../src/discord/index.js";
 import sleep from "../src/sleep.js";
 import { createDbClient } from "../src/database/index.js";
+import { utils as etherUtils, BigNumber } from "ethers";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -36,6 +39,7 @@ const {
 const WAIT_BEFORE_LR_POLL_OFFERS = 60 * 1000;
 const POLL_EVENTS_DELAY = 60 * 1000;
 const POLL_USER_TOKENS_INTERVAL = 5 * 60 * 1000;
+const POLL_COLLECTION_SLICE_DELAY = 60 * 1000;
 
 const discordClient = new Client({ intents: [Intents.FLAGS.GUILDS] });
 const [, , testArg] = process.argv;
@@ -214,6 +218,7 @@ const notifySales = async ({ dbClient, nftClient }) => {
         const tokens = await nftClient.getAddressNFTs(address);
         await dbClient.setAlertTokens({ id, tokens });
         alerts[index].tokens = tokens;
+        alerts[index].syncedAt = new Date();
       }
 
       index += 1;
@@ -286,6 +291,71 @@ const notifySales = async ({ dbClient, nftClient }) => {
     return collections.length > 0
       ? updateCollectionFloors(collectionMap, offset + 60)
       : collectionMap;
+  };
+
+  /**
+   * Get a collection's first N offers on LooksRare, sorted by price descending
+   * (the highest offer will be the first in the returned array). See
+   * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
+   * for reference.
+   * @param  {Array[String, Object]} collectionEntries - Entries from a
+   * collection map where the first member is the collection's address
+   * and the second member is an object with the current _price_, _endsAt_,
+   * _watchers_ and _collectionFloor_.
+   * @param  {Function} emit - The event emitter function that must be called
+   * when there is a new highest offer.
+   */
+  const pollCollectionOffers = async (collectionEntries, emit) => {
+    await Promise.all(
+      collectionEntries
+        .slice(0, 60)
+        .map(
+          async ([
+            collection,
+            {
+              price: currentHighest = 0,
+              endsAt: currentEndsAt,
+              watchers,
+              collectionFloor = 0,
+            },
+          ]) => {
+            const offers = await getCollectionOffers(collection);
+            if (offers.length === 0) {
+              return;
+            }
+
+            const [topOffer] = offers;
+            const { price, endTime: endsAt, signer } = topOffer;
+            const currentHighestInWei = etherUtils.parseEther(
+              `${currentHighest}`
+            );
+            if (
+              BigNumber.from(price).gt(BigNumber.from(currentHighestInWei)) ||
+              currentEndsAt < new Date().getTime()
+            ) {
+              emit("offer", {
+                ...topOffer,
+                watchers,
+                collectionFloor,
+                price: etherUtils.formatEther(price),
+                buyer: signer,
+                endsAt: endsAt * 1000,
+                marketplace: "looksRare",
+                collection,
+                network: "eth",
+                standard: "ERC-721",
+              });
+            }
+          }
+        )
+    );
+    const otherCollections = collectionEntries.slice(60);
+    if (otherCollections.length > 0) {
+      await sleep(POLL_COLLECTION_SLICE_DELAY);
+      return pollCollectionOffers(collectionEntries.slice(60), emit);
+    }
+
+    return Promise.resolve();
   };
 
   const pollEvents = async () => {
