@@ -12,8 +12,9 @@ import fetch from "node-fetch";
 import logError from "../log-error.js";
 import sleep from "../sleep.js";
 import createNFTClient from "./create-nft-client.js";
+import getCollectionMetadata from "./get-collection-metadata.js";
 
-export { createNFTClient };
+export { createNFTClient, getCollectionMetadata };
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -83,15 +84,6 @@ const parseAddressFromLogs = (address) => {
   }
 
   return address;
-};
-
-export const getCollectionMetadata = (collection) => {
-  const tokenContract = new ethers.Contract(collection, erc721Abi, ethProvider);
-  return Promise.all([
-    tokenContract.name().catch(() => {
-      return null;
-    }),
-  ]).then(([name]) => ({ name }));
 };
 
 const getReceiptInfo = async (event, eventType) => {
