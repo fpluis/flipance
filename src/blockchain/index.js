@@ -11,6 +11,9 @@ import {
 import fetch from "node-fetch";
 import logError from "../log-error.js";
 import sleep from "../sleep.js";
+import createNFTClient from "./create-nft-client.js";
+
+export { createNFTClient };
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -35,8 +38,6 @@ const {
   POCKET_PROJECT_ID,
   POCKET_SECRET_KEY,
   ALCHEMY_API_KEY,
-  NFT_SCAN_API_ID,
-  NFT_SCAN_SECRET,
 } = process.env;
 
 const ethProvider = getDefaultProvider("homestead", {
@@ -83,75 +84,6 @@ const parseAddressFromLogs = (address) => {
 
   return address;
 };
-
-const NFTScanCache = {
-  token: "",
-  expiry: new Date("1970-01-01"),
-};
-
-const getNFTScanToken = async () => {
-  if (NFTScanCache.expiry > new Date()) {
-    return NFTScanCache.token;
-  }
-
-  return fetch(
-    `https://restapi.nftscan.com/gw/token?apiKey=${NFT_SCAN_API_ID}&apiSecret=${NFT_SCAN_SECRET}`
-  )
-    .then((res) => res.json())
-    .then((result) => {
-      const {
-        data: { accessToken, expiration },
-      } = result;
-      const newExpiry = new Date();
-      newExpiry.setSeconds(newExpiry.getTime() + expiration * 1000);
-      NFTScanCache.expiry = newExpiry;
-      NFTScanCache.token = accessToken;
-      return accessToken;
-    });
-};
-
-export const getAddressNFTs = async (moralisClient, address) =>
-  moralisClient.Web3API.account
-    .getNFTs({
-      address,
-    })
-    .then(({ result }) => {
-      return result.map(
-        ({ token_address, token_id }) => `${token_address}/${token_id}`
-      );
-    })
-    .catch(async () => {
-      const accessToken = await getNFTScanToken();
-      return fetch(
-        `https://restapi.nftscan.com/api/v1/getAllNftByUserAddress`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Access-Token": accessToken,
-          },
-          body: JSON.stringify({
-            erc: "erc721",
-            page_index: 1,
-            page_size: 100,
-            user_address: address,
-          }),
-        }
-      )
-        .then((res) => res.json())
-        .then((response) => {
-          const {
-            data: { content },
-          } = response;
-          return content.map(
-            ({ nft_asset_id, nft_creator }) =>
-              `${nft_creator}/${parseInt(nft_asset_id, 16)}`
-          );
-        })
-        .catch(() => {
-          return [];
-        });
-    });
 
 export const getCollectionMetadata = (collection) => {
   const tokenContract = new ethers.Contract(collection, erc721Abi, ethProvider);

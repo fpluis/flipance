@@ -2,7 +2,6 @@ import path from "path";
 import dotenv from "dotenv";
 import { readFileSync } from "fs";
 import { utils } from "ethers";
-import { getAddressNFTs } from "../blockchain/index.js";
 import { MessageActionRow, MessageSelectMenu } from "discord.js";
 import { bold } from "@discordjs/builders";
 import logError from "../log-error.js";
@@ -172,7 +171,7 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
 const handleWalletAlert = async ({
   dbClient,
   discordClient,
-  moralisClient,
+  nftClient,
   interaction,
 }) => {
   const {
@@ -219,7 +218,7 @@ const handleWalletAlert = async ({
     });
   }
 
-  const tokens = await getAddressNFTs(moralisClient, address);
+  const tokens = await nftClient.getAddressNFTs(address);
   const { result } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",

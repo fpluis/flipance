@@ -6,9 +6,9 @@ import { Client, Intents } from "discord.js";
 import {
   nftEventEmitter,
   calculateProfit,
-  getAddressNFTs,
   pollCollectionOffers,
   getCollectionFloor,
+  createNFTClient,
 } from "../src/blockchain/index.js";
 import logError from "../src/log-error.js";
 import {
@@ -17,7 +17,6 @@ import {
   buildEmbed,
 } from "../src/discord/index.js";
 import sleep from "../src/sleep.js";
-import moralisClient from "moralis/node.js";
 import { createDbClient } from "../src/database/index.js";
 
 dotenv.config({ path: path.resolve(".env") });
@@ -31,9 +30,6 @@ const allEventIds = nftEvents.map(({ id }) => id);
 const {
   DISCORD_BOT_TOKEN,
   DISCORD_BOT_TOKEN_TEST,
-  MORALIS_SERVER_URL,
-  MORALIS_APP_ID,
-  MORALIS_MASTER_KEY,
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
 
@@ -78,7 +74,7 @@ const isAllowedByPreferences = (
   return true;
 };
 
-const notifySales = async ({ dbClient }) => {
+const notifySales = async ({ dbClient, nftClient }) => {
   const handleSale = async (args) => {
     const {
       seller: sellerAddress = "",
@@ -208,14 +204,14 @@ const notifySales = async ({ dbClient }) => {
   const refreshAlertTokens = async () => {
     let index = 0;
     const { objects: alerts } = await dbClient.getAllAlerts();
-    while (index < alerts) {
-      const [{ id, address, type, syncedAt }] = alerts[index];
+    while (index < alerts.length) {
+      const { id, address, type, syncedAt } = alerts[index];
       if (
         type === "wallet" &&
         (syncedAt == null ||
           new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL)
       ) {
-        const tokens = await getAddressNFTs(moralisClient, address);
+        const tokens = await nftClient.getAddressNFTs(address);
         await dbClient.setAlertTokens({ id, tokens });
         alerts[index].tokens = tokens;
       }
@@ -327,18 +323,10 @@ const notifySales = async ({ dbClient }) => {
 discordClient.once("ready", async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   const dbClient = await createDbClient();
-  notifySales({ dbClient });
-  await moralisClient
-    .start({
-      serverUrl: MORALIS_SERVER_URL,
-      appId: MORALIS_APP_ID,
-      masterKey: MORALIS_MASTER_KEY,
-    })
-    .catch(() => {
-      console.log(`Invalid/missing Moralis credentials. Starting without it`);
-    });
+  const nftClient = await createNFTClient();
+  notifySales({ dbClient, nftClient });
   discordClient.on("interactionCreate", (interaction) => {
-    handleInteraction({ discordClient, moralisClient, dbClient }, interaction);
+    handleInteraction({ discordClient, nftClient, dbClient }, interaction);
   });
 });
 
