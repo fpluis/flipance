@@ -92,10 +92,11 @@ export default async () => {
     });
 
   /**
-   * @param  {} address - The ETH address
+   * Get the NFTs owned by an ETH account
+   * @param {String} address - The ETH address
    * @return {Array[String]} - The NFTs represented as "collection/tokenId"
    */
-  const getAddressNFTs = (address) =>
+  const getAddressNFTs = (address = "") =>
     moralisClient.Web3API.account
       .getNFTs({
         address,
