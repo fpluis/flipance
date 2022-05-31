@@ -13,8 +13,9 @@ import logError from "../log-error.js";
 import sleep from "../sleep.js";
 import createNFTClient from "./create-nft-client.js";
 import getCollectionMetadata from "./get-collection-metadata.js";
+import calculateProfit from "./calculate-profit.js";
 
-export { createNFTClient, getCollectionMetadata };
+export { createNFTClient, getCollectionMetadata, calculateProfit };
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -23,7 +24,6 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 const POLL_COLLECTION_SLICE_DELAY = 60 * 1000;
-const MAX_GET_COLLECTION_RETRIES = 3;
 
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
 const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
@@ -34,7 +34,6 @@ const openSeaSSAddress = "0x495f947276749Ce646f68AC8c248420045cb7b5e";
 const townStarAddress = "0xc36cF0cFcb5d905B8B513860dB0CFE63F6Cf9F5c";
 
 const {
-  ETHERSCAN_API_KEY,
   INFURA_PROJECT_ID,
   POCKET_PROJECT_ID,
   POCKET_SECRET_KEY,
@@ -334,7 +333,7 @@ const callLRWithRetries = (endpoint, retries = 1) =>
       return [];
     });
 
-export const getCollectionOffers = (collection) =>
+const getCollectionOffers = (collection) =>
   callLRWithRetries(
     `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=1&status[]=VALID&sort=PRICE_DESC`
   );
@@ -625,100 +624,6 @@ const x2y2EventListener = (emit) => {
     });
   });
   return contract;
-};
-
-const getCollectionTxs = async ({
-  collection,
-  address,
-  page = 1,
-  offset = 100,
-  retries = 0,
-}) => {
-  const url = `https://api.etherscan.io/api?module=account&action=tokennfttx&contractaddress=${collection.toLowerCase()}&address=${address.toLowerCase()}&sort=asc&apikey=${ETHERSCAN_API_KEY}&page=${page}&offset=${offset}&startblock=0`;
-  const response = await fetch(url).then((res) => res.json());
-  const { result } = response;
-  if (result === "Max rate limit reached") {
-    const timeout = Math.random() * 5000 * MAX_GET_COLLECTION_RETRIES - retries;
-    if (retries < MAX_GET_COLLECTION_RETRIES) {
-      await sleep(timeout);
-      return getCollectionTxs({
-        collection,
-        address,
-        page,
-        offset,
-        retries: retries + 1,
-      });
-    }
-
-    return [];
-  }
-
-  if (!Array.isArray(result)) {
-    return [];
-  }
-
-  return result;
-};
-
-const calculateCost = async ({
-  transactionHash,
-  seller,
-  tokenId,
-  collection,
-  standard,
-}) => {
-  if (standard !== "ERC-721") {
-    return null;
-  }
-
-  const collectionTxs = await getCollectionTxs({ collection, address: seller });
-  const tokenTxs = collectionTxs.filter(
-    ({ tokenID }) => tokenID === `${tokenId}`
-  );
-  if (tokenTxs.length === 0) {
-    return null;
-  }
-
-  const [mostRecentTx, secondMostRecentTx] = tokenTxs;
-  const purchaseTx =
-    mostRecentTx != null && mostRecentTx.hash === transactionHash
-      ? secondMostRecentTx
-      : mostRecentTx;
-  if (purchaseTx == null) {
-    return null;
-  }
-
-  const { gasUsed, gasPrice } = purchaseTx;
-  const { from, value } = await ethProvider.getTransaction(purchaseTx.hash);
-  if (from === seller) {
-    const gasEth = BigNumber.from(gasUsed).mul(BigNumber.from(gasPrice));
-    return gasEth.add(value);
-  }
-
-  // Assume it was gifted
-  return ethers.BigNumber.from(0);
-};
-
-export const calculateProfit = async (args) => {
-  const cost = await calculateCost(args);
-  if (cost == null) {
-    return null;
-  }
-
-  const url = `https://api.etherscan.io/api?module=account&action=txlistinternal&txhash=${args.transactionHash}&apikey=${ETHERSCAN_API_KEY}`;
-  const response = await fetch(url).then((res) => res.json());
-  const { result } = response;
-  if (Array.isArray(result)) {
-    const receivedTx = result.find(
-      ({ to }) => to.toLowerCase() === args.seller.toLowerCase()
-    );
-    if (receivedTx != null) {
-      const received = BigNumber.from(receivedTx.value);
-      return etherUtils.formatEther(etherUtils.parseEther(received.sub(cost)));
-    }
-  }
-
-  return null;
 };
 
 export const nftEventEmitter = () => {
