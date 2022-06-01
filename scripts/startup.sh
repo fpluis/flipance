@@ -1,5 +1,10 @@
 #!/bin/bash -xe
 
+# This is the installation script that runs when an EC2 instance is deployed
+# using the terraform.tf template at the project's root. It will set the env
+# variables, install dependencies, pull the code and start the bot script
+# using forever, so it will automatically reboot if the process exits.
+
 # Redirect stdout and stderr to a log file for debugging.
 exec 1>/home/ubuntu/startup.log 2>&1
 
