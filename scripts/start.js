@@ -1,4 +1,11 @@
 /* eslint-disable no-await-in-loop */
+
+/*
+ * This is the main script to run the Flipance bot. It coordinates all the
+different modules, polling offers, collection floors and user's tokens and also
+listens to blockchain events.
+ */
+
 import path from "path";
 import dotenv from "dotenv";
 import { readFileSync } from "fs";
