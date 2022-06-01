@@ -1,3 +1,10 @@
+/*
+ * This function registers all of the bot's commands on a Discord server.
+ * It needs to be called whenever the bot joins a server and also whenever
+ * the commands change. If that is the case, use the register-commands script.
+ * Note: Users will only see updated commands after relogging.
+ */
+
 import path from "path";
 import dotenv from "dotenv";
 import { SlashCommandBuilder } from "@discordjs/builders";
