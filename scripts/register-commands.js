@@ -1,4 +1,10 @@
 /* eslint-disable no-await-in-loop */
+/*
+  This script is used to update every Discord server where the bot is installed
+  whenever the slash commands change.
+  Note: Users will only see updated commands after relogging
+*/
+
 import path from "path";
 import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
