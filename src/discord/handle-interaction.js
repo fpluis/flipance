@@ -1,8 +1,23 @@
+/* eslint-disable max-len */
+/*
+ * This function handles incoming user interactions to create/edit/list alerts
+and settings. If the interaction is valid, the database is queried and the
+interaction with the user is modified. Since database queries take an indefinite
+amount of time, it is crucial to first use _interaction.deferReply_ and then
+interaction.editReply instead of interaction.reply because otherwise the
+interaction will timeout. See https://discord.js.org/#/docs/discord.js/stable/class/CommandInteraction for reference.
+ */
+
 import path from "path";
 import dotenv from "dotenv";
 import { readFileSync } from "fs";
 import { utils } from "ethers";
-import { MessageActionRow, MessageSelectMenu } from "discord.js";
+import {
+  MessageActionRow,
+  MessageSelectMenu,
+  // eslint-disable-next-line no-unused-vars
+  CommandInteraction,
+} from "discord.js";
 import { bold } from "@discordjs/builders";
 import logError from "../log-error.js";
 
@@ -16,6 +31,7 @@ const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
 
+/* Check the address is a valid Ethereum address */
 const isValidAddress = (address) => {
   try {
     utils.getAddress(address);
@@ -25,8 +41,16 @@ const isValidAddress = (address) => {
   }
 };
 
+/* This function determines what kind of nicknames are acceptable */
 const isValidNickname = (nickname) => nickname != null && !/\s/.test(nickname);
 
+/**
+ * Handle the /collectionalert slash command. Only users with the Admin permission in a discord server can create alerts for that server. This function will check that the address and/or nickname are correct and that an alert with the same address/nickname for the server doesn't already exist.
+ * @param  {Object} params
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @return {void}
+ */
 const handleCollectionAlert = async ({ dbClient, interaction }) => {
   const { guildId: discordId, channelId, memberPermissions } = interaction;
   await interaction.deferReply({
@@ -117,6 +141,13 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
   }
 };
 
+/**
+ * Handle the /listalert slash command. Lists both personal alerts for the user and server-wide alerts.
+ * @param  {Object} params
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @return {void}
+ */
 const handleListAlerts = async ({ dbClient, interaction }) => {
   const {
     user: { id: discordId },
@@ -168,6 +199,15 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   });
 };
 
+/**
+ * Handle the /walletalert slash command. This function will check that the address and/or nickname are correct and that an alert with the same address/nickname for the user doesn't already exist.
+ * @param  {Object} params
+ * @param  {Object} clients.discordClient - The initialized discord client.
+ * @param  {Object} clients.nftClient - The initialized NFT client.
+ * @param  {Object} clients.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleWalletAlert = async ({
   dbClient,
   discordClient,
@@ -265,6 +305,13 @@ const handleWalletAlert = async ({
   }
 };
 
+/**
+ * Handle the /deletealert slash command. Only users with the Admin permission in a discord server can delete alerts for that server.
+ * @param  {Object} params
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @return {void}
+ */
 const handleDeleteAlert = async ({ dbClient, interaction }) => {
   const {
     guildId,
@@ -322,6 +369,9 @@ const handleDeleteAlert = async ({ dbClient, interaction }) => {
   }
 };
 
+/**
+ * Helper function to turn user/alert settings into a human-readable string
+ */
 const describeSettings = ({
   alertLimit,
   maxOfferFloorDifference,
@@ -352,6 +402,12 @@ const describeSettings = ({
   }${commonSettings}`;
 };
 
+/**
+ * Helper function to retrieve settings where either the alert or the address are provided as the interaction option "alert". If the "alert" interaction option is a valid Ethereum address, it will attempt to retrieve it from the database. If it is a valid nickname, it will attempt to retrieve a matching alert from the database. Finally, it will attempt to retrieve the user/server settings from the database.
+ * @param  {Object} dbClient - The initialized database client.
+ * @param  {CommandInteraction} interaction - The user interaction.
+ * @return {void}
+ */
 const getSettings = async (dbClient, interaction) => {
   const {
     guildId,
@@ -367,6 +423,7 @@ const getSettings = async (dbClient, interaction) => {
         const alertByAddress = objects.find(
           ({ address: address1 }) => address1 === address
         );
+        // If the user doesn't have the alert, query server alerts
         if (result === "success" && alertByAddress == null) {
           return dbClient.getUserAlerts({
             discordId: guildId,
@@ -385,6 +442,7 @@ const getSettings = async (dbClient, interaction) => {
     const { result, objects } = await dbClient
       .getAlertsByNickname({ discordId, nickname })
       .then(({ result, objects }) => {
+        // If the user doesn't have the alert, query server alerts
         if (result === "success" && objects.length === 0) {
           return dbClient.getAlertsByNickname({
             discordId: guildId,
@@ -400,6 +458,7 @@ const getSettings = async (dbClient, interaction) => {
   return dbClient
     .getUserByDiscordId({ discordId })
     .then(({ result, object }) => {
+      // If the user hasn't created any alerts, retrieve the server-wide settings.
       if (result === "success" && object == null) {
         return dbClient.getUserByDiscordId({
           discordId: guildId,
@@ -410,6 +469,13 @@ const getSettings = async (dbClient, interaction) => {
     });
 };
 
+/**
+ * Handle the /settings slash command. Depending on the "alert" interaction option, the settings will be those of a user/server or an alert.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSettings = async ({ dbClient, interaction }) => {
   await interaction.deferReply({
     content: "Fetching your settings...",
@@ -435,6 +501,13 @@ const handleSettings = async ({ dbClient, interaction }) => {
   }
 };
 
+/**
+ * Handle the /setallowedmarketplaces slash command. Depending on the "alert" interaction option, the modified settings will be those of a user/server or an alert. This function does not modify the settings directly. Instead, it creates a multi select menu on the discord interaction where the user can pick the marketplaces. The function that handles that result is handleAllowedMarketplacesPick.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
   await interaction.deferReply({
     content: "Fetching your preferences...",
@@ -466,6 +539,13 @@ const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
   });
 };
 
+/**
+ * Handle the /setallowedevents slash command. Depending on the "alert" interaction option, the modified settings will be those of a user/server or an alert. This function does not modify the settings directly. Instead, it creates a multi select menu on the discord interaction where the user can pick the events. The function that handles that result is handleAllowedEventsPick.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
   await interaction.deferReply({
     content: "Fetching your preferences...",
@@ -497,6 +577,10 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
   });
 };
 
+/*
+ * Helper function that replies to the user interaction depending on the result
+after attempting a database query.
+ */
 const handleUpdatePreferencesResponse = async (interaction, result, object) => {
   if (result === "success") {
     return interaction.editReply({
@@ -521,6 +605,13 @@ const handleUpdatePreferencesResponse = async (interaction, result, object) => {
   });
 };
 
+/**
+ * Handle the /setmaxofferfloordifference slash command. Depending on the "alert" interaction option, the modified settings will be those of a user/server or an alert. The percentage is passed as an interaction option and does not need validation because Discord already checks it is a Number.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
   const {
     guildId,
@@ -565,6 +656,13 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
   });
 };
 
+/**
+ * Handle the /setnickname slash command. If the provided interaction options are correct, and an alert with the provided address exists, then the nickname for that address changes.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSetNickname = async ({ dbClient, interaction }) => {
   const {
     guildId,
@@ -618,6 +716,12 @@ const handleSetNickname = async ({ dbClient, interaction }) => {
   });
 };
 
+/**
+ * Routes the input interaction to its handler, depending on the interaction's commandName.
+ * @param  {Object} args
+ * @param  {CommandInteraction} args.interaction - The user interaction.
+ * @return {void}
+ */
 const handleCommand = async (args) => {
   const { interaction } = args;
   switch (interaction.commandName) {
@@ -649,6 +753,14 @@ const handleCommand = async (args) => {
   }
 };
 
+/**
+ * Handles the interaction response when a user selects the allowed marketplaces in a Discord SelectMenu. The function handleSetAllowedMarketplaces is the one that handles the initial /setallowedmarketplaces slash command.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {CommandInteraction} params.alert - The "alert" interaction option passed to the original slash command interaction.
+ * @return {void}
+ */
 const handleAllowedMarketplacesPick = async ({
   dbClient,
   interaction,
@@ -695,6 +807,14 @@ const handleAllowedMarketplacesPick = async ({
   });
 };
 
+/**
+ * Handles the interaction response when a user selects the allowed events in a Discord SelectMenu. The function handleSetAllowedEvents is the one that handles the initial /setallowedevents slash command.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {CommandInteraction} params.alert - The "alert" interaction option passed to the original slash command interaction.
+ * @return {void}
+ */
 const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
   const {
     guildId,
@@ -737,6 +857,12 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
   });
 };
 
+/**
+ * Routes the SelectMenu interaction to its handler, depending on the select menu "type" which is set within the SelectMenu's custom id. It is necessary to specify the id in this way to pass the interaction option "alert" from the initial interaction to the pick handlers because the latter don't have access to interaction options.
+ * @param  {Object} args
+ * @param  {CommandInteraction} args.interaction - The user interaction.
+ * @return {void}
+ */
 const handleSelectMenu = async (args) => {
   const {
     interaction: { customId },
@@ -752,6 +878,15 @@ const handleSelectMenu = async (args) => {
   }
 };
 
+/**
+ * Handle an interaction provided the necessary service clients.
+ * @param  {Object} clients
+ * @param  {Object} clients.discordClient - The initialized discord client.
+ * @param  {Object} clients.nftClient - The initialized NFT client.
+ * @param  {Object} clients.dbClient - The initialized database client.
+ * @param  {CommandInteraction} interaction - The Discord interaction initiated by
+ * the user.
+ */
 export default async (clients, interaction) => {
   const args = { ...clients, interaction };
   if (interaction.isCommand() && !interaction.replied) {
