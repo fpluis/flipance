@@ -278,3 +278,38 @@ When you interact with the bot, check it has the correct Note.
 Protecting API keys and secrets is crucial. If you deploy the bot to your own infrastructure, you must remember that the bot needs to have access to these keys. You can restrict access by placing the secrets on a .env variable and changing the file's permissions.
 
 If you use the terraform deployment, you will notice that it uses the [AWS System Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html). The EC2 instance where the bot runs is assigned a role that can access these permissions. If you grant someone access to the EC2 instance, that person will be able to request the secret keys using the bot's credentials.
+
+# Project structure
+
+If you want to contribute, this section will help you understand how the code is structured by looking at what there is in each folder.
+
+## src
+
+The source folder is organized into modules that export multiple functions, grouped according to their general purpose:
+- __src/blockchain__: Functions that pull data from the blockchain directly.
+- __src/database__: Functions to set up and query the PostgreSQL database. Its tests are available in test/database
+- __src/discord__: Functions that interface with the discord.js library.
+- __src/looksrare-api__: Functions that call LooksRare's APIs.
+
+The rest of the files in this folder are more or less generic purpose or at least used by different functions.
+
+## test
+
+Tests for each module, written using jest. The file structure should mirror the structure of the _src_ folder.
+
+## scripts
+
+The scripts are the entry point files that call the code from the _src_ folder. You can execute them on  a bash terminal by running
+```
+npm run {SCRIPT_NAME}
+```
+
+where {SCRIPT_NAME} is the name of the script without the trailing ".js".
+
+This is an overview of the scripts in this folder:
+- __start__: This is the main script to run the Flipance bot. It coordinates all the
+different modules, polling offers, collection floors and user's tokens and also
+listens to blockchain events.
+- __pull-env__: Used during EC2 instance initialization to retrieve and store environment variables on the instance.
+- __register-commands__: Register the bot's commands on every Discord server where it is installed. You must run this script once if you modify any slash command.
+- __setup-db__: Create and initialize the Flipance database. If the database already existed, it will be overwritten and any data on it will be lost, so run this script only if you are certain you need to.
