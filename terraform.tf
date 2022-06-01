@@ -1,3 +1,9 @@
+# The configuration file to deploy the AWS infrastructure.
+# It will create an EC2 instance and start it with a custom
+# installation script.
+# IMPORTANT NOTE: Deploying this template will make you incur in a
+# monthly expense.
+
 terraform {
   required_version = ">= 0.13"
   backend "s3" {}
