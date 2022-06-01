@@ -1,3 +1,9 @@
+/*
+  This script will create or replace the Flipance database with its schema.
+  IMPORTANT: It will wipe the database if it exists, so only use it if you are
+  absolutely sure.
+*/
+
 import path from "path";
 import dotenv from "dotenv";
 import {
