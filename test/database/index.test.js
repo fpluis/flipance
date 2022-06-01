@@ -218,6 +218,7 @@ test("setAlertTokens on an existing alert", async () => {
     address: address1,
   });
   expect(alerts[0].tokens).toMatchObject(tokens1);
+  expect(alerts[0].syncedAt).not.toBe(alert.syncedAt);
 });
 
 test("setMaxFloorDifference without arguments", async () => {
