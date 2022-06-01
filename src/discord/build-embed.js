@@ -1,98 +1,16 @@
 import { MessageAttachment } from "discord.js";
-import fetch from "node-fetch";
 import sharp from "sharp";
 import { getCollectionMetadata } from "../blockchain/index.js";
 import logError from "../log-error.js";
+import getMetadata from "../get-metadata.js";
+import resolveURI from "../resolve-uri.js";
 
-const resolveIPFSUri = (ipfsURI) =>
-  `https://ipfs.io/ipfs/${ipfsURI.replace(/^ipfs:\/\//, "")}`;
-
-const resolveArweaveURI = (arweaveURI) =>
-  `https://ipfs.io/ipfs/${arweaveURI.replace(
-    /^ar:\/\//,
-    "https://arweave.net/"
-  )}`;
-
-const getImage = (imageURI) =>
-  imageURI.startsWith("ipfs://")
-    ? resolveIPFSUri(imageURI)
-    : imageURI.startsWith("ar://")
-    ? resolveArweaveURI(imageURI)
-    : imageURI;
-
-const getMetadata = async (metadataURI, tokenId, transactionHash) => {
-  if (metadataURI.startsWith(`data:application/json;base64,`)) {
-    try {
-      const base64String = metadataURI.replace(
-        `data:application/json;base64,`,
-        ""
-      );
-      const parsed = JSON.parse(Buffer.from(base64String, "base64"));
-      if (parsed.image) {
-        return parsed;
-      }
-    } catch (error) {
-      logError(`Error parsing binary as JSON: ${JSON.stringify(error)}`);
-      return {};
-    }
-  }
-
-  let url = metadataURI.startsWith("ipfs://")
-    ? resolveIPFSUri(metadataURI)
-    : metadataURI.startsWith("ar://")
-    ? resolveArweaveURI(metadataURI)
-    : metadataURI;
-  if (/\{id\}/.test(url) && tokenId != null) {
-    url = url.replace(`{id}`, tokenId);
-  }
-
-  return fetch(url)
-    .then(async (response) => {
-      const contentTypeRaw = response.headers.get("content-type");
-      const contentType = contentTypeRaw ? contentTypeRaw.toLowerCase() : "";
-      if (contentType.startsWith("application/json")) {
-        return response.json();
-      }
-
-      if (contentType.startsWith("text/plain")) {
-        let metadata = {};
-        try {
-          metadata = await response.json();
-        } catch (error) {
-          const text = await response.text();
-          logError(`Plain-text isn't JSON; plain-text: ${text}`);
-        }
-
-        return metadata;
-      }
-
-      if (contentType.startsWith("text/html")) {
-        const { status } = response;
-        if (status !== 200) {
-          return {};
-        }
-
-        return response.text().then(() => {
-          return {};
-        });
-      }
-
-      return {};
-    })
-    .catch((error) => {
-      logError(
-        `Error fetching url "${url}" from metadata uri ${metadataURI}; tx hash ${transactionHash}; ${JSON.stringify(
-          error
-        )}`
-      );
-      return {};
-    });
-};
-
+/* Turns a long hex string like "0x123456789123456" into "0x12...3456" */
 const makeAddressReadable = (address) =>
   `${address.slice(0, 4)}...${address.slice(address.length - 4)}`;
 
-const marketplaceIdToLink = (marketplace) => {
+/* Turns a marketplace id to an embedded link in Markdown */
+const marketplaceIdToMdLink = (marketplace) => {
   switch (marketplace) {
     case "looksRare":
       return "[LooksRare](https://looksrare.org/)";
@@ -136,10 +54,15 @@ export default async ({
       : originalTokenId;
   const priceString = `${Number(priceEth).toFixed(3)} ETH`;
   const metadata = await (metadataUri
-    ? getMetadata(metadataUri, tokenId, transactionHash)
+    ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
+        logError(
+          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}. Error: ${error.toString()}`
+        );
+        return {};
+      })
     : Promise.resolve({}));
   const collectionMetadata = await getCollectionMetadata(collection);
-  const marketplace = marketplaceIdToLink(marketplaceId);
+  const marketplace = marketplaceIdToMdLink(marketplaceId);
   let description;
   let title = "New sale!";
   let url = `https://etherscan.io/tx/${transactionHash}`;
@@ -311,7 +234,7 @@ export default async ({
   files.push(thumbnail);
 
   if (metadata.image && metadata.image.length > 0) {
-    const imageURL = getImage(metadata.image);
+    const imageURL = resolveURI(metadata.image);
     if (imageURL.startsWith("data:image/")) {
       const [mimeType, base64String] = imageURL.split(";");
       const data = base64String.replace(/^base64,/, "");
