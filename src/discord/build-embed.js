@@ -29,7 +29,7 @@ const marketplaceIdToMdLink = (marketplace) => {
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
 export default async ({
-  saleType,
+  eventType,
   isBuyer,
   isSeller,
   transactionHash,
@@ -67,7 +67,7 @@ export default async ({
   let title = "New sale!";
   let url = `https://etherscan.io/tx/${transactionHash}`;
   const collectionUrl = `https://looksrare.org/collections/${collection}`;
-  if (saleType === "offer") {
+  if (eventType === "offer") {
     const priceDescription =
       collectionFloor == null
         ? `${priceString}`
@@ -98,23 +98,23 @@ export default async ({
     url = tokenId == null ? collectionUrl : `${collectionUrl}/${tokenId}`;
   } else if (isBuyer) {
     description =
-      saleType === "acceptOffer"
+      eventType === "acceptOffer"
         ? `You accepted an offer on ${marketplace} for ${priceString}`
-        : saleType === "acceptAsk"
+        : eventType === "acceptAsk"
         ? `You bought an NFT on ${marketplace} for ${priceString}`
         : `You won an auction on ${marketplace} for ${priceString}`;
   } else if (isSeller) {
     description =
-      saleType === "acceptOffer"
+      eventType === "acceptOffer"
         ? `Your offer was accepted on ${marketplace} for ${priceString}`
-        : saleType === "acceptAsk"
+        : eventType === "acceptAsk"
         ? `You sold your NFT on ${marketplace} for ${priceString}`
         : `You sold an item in auction on ${marketplace} for ${priceString}`;
   } else {
     description =
-      saleType === "acceptOffer"
+      eventType === "acceptOffer"
         ? `Offer accepted on ${marketplace} for ${priceString}`
-        : saleType === "acceptAsk"
+        : eventType === "acceptAsk"
         ? `NFT bought directly on ${marketplace} for ${priceString}`
         : `Auction won on ${marketplace} for ${priceString}`;
   }
@@ -161,7 +161,7 @@ export default async ({
     });
   }
 
-  if (saleType === "offer" && endsAt != null) {
+  if (eventType === "offer" && endsAt != null) {
     embed.fields.push({
       name: "Valid until",
       value: new Date(endsAt).toUTCString(),
@@ -222,7 +222,7 @@ export default async ({
   const files = [];
 
   let thumbnail;
-  if (saleType === "acceptOffer" || saleType === "settleAuction") {
+  if (eventType === "acceptOffer" || eventType === "settleAuction") {
     thumbnail = new MessageAttachment("./assets/weth.png", "weth.png");
   } else {
     thumbnail = new MessageAttachment("./assets/eth.png", "eth.png");

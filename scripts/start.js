@@ -58,8 +58,27 @@ if (testArg === "test") {
   console.log(`Starting the client in TEST mode`);
 }
 
+/**
+ * Determine whether a user/server should be notified of an NFT event
+ * based on their preferences
+ * @param  {Object} params
+ * @param  {String} params.marketplace - The marketplace id. You can find
+ * the whole list at data/marketplaces.json.
+ * @param  {String} params.eventType - The event type.  You can find
+ * the whole list at data/nft-events.json.
+ * @param  {Number} params.collectionFloor - The latest floor price for
+ * the NFT's collection.
+ * @param {Number} params.price - The price associated to the event. If
+ * it is a sale, the sale price. If it's an offer, the offer price.
+ * @param {Object} settings
+ * @param {Array[String]} allowedMarketplaces - List of allowed marketplace ids.
+ * @param {Array[String]} allowedEvents - List of allowed NFT event ids.
+ * @param {Number} maxOfferFloorDifference - Max. deviation from the collection
+ * floor an offer can have to be relevant to the alert.
+ * @return {Boolean}
+ */
 const isAllowedByPreferences = (
-  { marketplace, saleType, collectionFloor, price },
+  { marketplace, eventType, collectionFloor, price },
   {
     allowedMarketplaces = allMarketplaceIds,
     allowedEvents = allEventIds,
@@ -68,12 +87,12 @@ const isAllowedByPreferences = (
 ) => {
   if (
     !allowedMarketplaces.includes(marketplace) ||
-    !allowedEvents.includes(saleType)
+    !allowedEvents.includes(eventType)
   ) {
     return false;
   }
 
-  if (saleType === "offer" && collectionFloor != null) {
+  if (eventType === "offer" && collectionFloor != null) {
     if (price >= collectionFloor) {
       return true;
     }
@@ -85,7 +104,21 @@ const isAllowedByPreferences = (
   return true;
 };
 
-const notifySales = async ({ dbClient, nftClient }) => {
+/**
+ * This function takes as parameter already-configured clients and is in
+ * charge of monitoring blockchain events on the target marketplaces and
+ * notifying users/servers of these events.
+ * @param {Object} params
+ * @param {Object} params.dbClient - The initialized database client.
+ * @param {Object} params.nftClient - The initialized client to poll NFT
+ * information.
+ */
+const monitorBlockchainEvents = async ({ dbClient, nftClient }) => {
+  /*
+   * Handle sale events coming from the blockchain. If there is an alert
+   * set up for the buyer, seller or collection, notify the user/server
+   * that created that alert.
+   */
   const handleSale = async (args) => {
     const {
       seller: sellerAddress = "",
@@ -173,9 +206,12 @@ const notifySales = async ({ dbClient, nftClient }) => {
     }
   };
 
-  const handleOffer = async (saleType, args) => {
+  /*
+   * Notifies users/servers of a new highest offer for a collection.
+   */
+  const handleOffer = async (eventType, args) => {
     const { watchers, collection, price, endsAt, marketplace } = args;
-    args.saleType = saleType;
+    args.eventType = eventType;
     await dbClient.setCollectionOffer({
       address: collection,
       price,
@@ -193,7 +229,7 @@ const notifySales = async ({ dbClient, nftClient }) => {
           const embed = await buildEmbed({
             ...args,
             target: isUserMessage ? "user" : "server",
-            saleType,
+            eventType,
             tokenIds,
           });
           target.send(embed).catch((error) => {
@@ -212,7 +248,11 @@ const notifySales = async ({ dbClient, nftClient }) => {
     });
   };
 
-  const refreshAlertTokens = async () => {
+  /*
+   * Updates the tokens associated to an alert to always monitor the
+   * offers for collections that users own.
+   */
+  const updateAlertTokens = async () => {
     let index = 0;
     const { objects: alerts } = await dbClient.getAllAlerts();
     while (index < alerts.length) {
@@ -234,6 +274,12 @@ const notifySales = async ({ dbClient, nftClient }) => {
     return alerts;
   };
 
+  /*
+   * Creates a map where each collection address has associated a list of
+   * watchers (users and servers), token ids, current offer price and expiry.
+   * The purpose of this map is to pull information only for the collections
+   * which are relevant to users.
+   */
   const toCollectionMap = (alerts, offers) => {
     const collectionMap = alerts.reduce(
       (collectionMap, { id, tokens, ...alert }) => {
@@ -271,6 +317,10 @@ const notifySales = async ({ dbClient, nftClient }) => {
     return collectionMap;
   };
 
+  /*
+   * Updates the collection floors of all the collections for which at least
+  one user owns an NFT.
+   */
   const updateCollectionFloors = async (collectionMap, offset = 0) => {
     const collections = Object.keys(collectionMap).slice(offset, offset + 60);
     let index = 0;
@@ -365,8 +415,11 @@ const notifySales = async ({ dbClient, nftClient }) => {
     return Promise.resolve();
   };
 
+  /*
+   * Main polling loop in charge of updating collection floors and offers.
+   */
   const pollEvents = async () => {
-    const alerts = await refreshAlertTokens();
+    const alerts = await updateAlertTokens();
     const { objects: currentOffers } = await dbClient.getAllCollectionOffers();
     const collectionMap = toCollectionMap(alerts, currentOffers);
     await updateCollectionFloors(collectionMap);
@@ -380,15 +433,15 @@ const notifySales = async ({ dbClient, nftClient }) => {
 
   const eventEmitter = nftEventEmitter();
   ["acceptAsk", "acceptOffer", "settleAuction", "bid", "offer"].forEach(
-    (saleType) => {
-      eventEmitter.on(saleType, (args) => {
+    (eventType) => {
+      eventEmitter.on(eventType, (args) => {
         try {
-          handleSale({ ...args, saleType });
+          handleSale({ ...args, eventType });
         } catch (error) {
           logError(
             `Error handling sale with args ${JSON.stringify({
               ...args,
-              saleType,
+              eventType,
             })}: ${error.toString()}`
           );
         }
@@ -401,7 +454,7 @@ discordClient.once("ready", async () => {
   console.log(`Logged in as ${discordClient.user.tag}!`);
   const dbClient = await createDbClient();
   const nftClient = await createNFTClient();
-  notifySales({ dbClient, nftClient });
+  monitorBlockchainEvents({ dbClient, nftClient });
   discordClient.on("interactionCreate", (interaction) => {
     handleInteraction({ discordClient, nftClient, dbClient }, interaction);
   });

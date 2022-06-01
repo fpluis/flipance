@@ -296,21 +296,21 @@ const openSeaEventListener = (emit) => {
     const parsedEvent = await parseEvent(event);
     let seller;
     let buyer;
-    let saleType;
+    let eventType;
     if (
       parsedEvent.from &&
       parsedEvent.from.toLowerCase() === parsedEvent.initiator.toLowerCase()
     ) {
-      saleType = "acceptOffer";
+      eventType = "acceptOffer";
       buyer = maker;
       seller = taker;
     } else {
-      saleType = "acceptAsk";
+      eventType = "acceptAsk";
       buyer = taker;
       seller = maker;
     }
 
-    emit(saleType, {
+    emit(eventType, {
       transactionHash,
       marketplace: "openSea",
       seller,
