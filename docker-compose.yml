@@ -17,7 +17,6 @@ services:
     image: fpluis/flipance-discord-bot
     build:
       context: .
-    env_file: .env
     environment:
       DB_HOSTNAME: "postgres"
     # It's crucial that the postgres image starts first to prepare the DB
