@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
-      - "${DB_PORT}:${DB_PORT}"
+      - 5432:5432
     volumes:
       - flipance-db:/var/lib/postgresql/data
     hostname: postgres
@@ -30,6 +30,7 @@ services:
 
 volumes:
   flipance-db:
+
 
 networks:
   dbnet:
