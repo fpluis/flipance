@@ -4,8 +4,11 @@ services:
     env_file: .env
 
   postgres:
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - flipance-db:/var/lib/postgresql/data
 
 volumes:
-  pgdata:
+  flipance-db:

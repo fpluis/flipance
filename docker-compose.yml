@@ -4,9 +4,6 @@ version: "3.9"
 services:
   postgres:
     image: postgres
-    environment:
-      POSTGRES_USER: ${DB_USERNAME}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - 5432:5432
     hostname: postgres
@@ -24,10 +21,7 @@ services:
       - postgres
     networks:
       - dbnet
-
-volumes:
-  flipance-db:
-
+    restart: on-failure
 
 networks:
   dbnet:

@@ -313,3 +313,21 @@ listens to blockchain events.
 - __pull-env__: Used during EC2 instance initialization to retrieve and store environment variables on the instance.
 - __register-commands__: Register the bot's commands on every Discord server where it is installed. You must run this script once if you modify any slash command.
 - __setup-db__: Create and initialize the Flipance database. If the database already existed, it will be overwritten and any data on it will be lost, so run this script only if you are certain you need to.
+
+# Docker setup
+
+There is a [Docker image available](https://hub.docker.com/repository/docker/fpluis/flipance-discord-bot) for this repository that lets you deploy your own Flipance instance using [docker-compose](https://docs.docker.com/compose/install/). You can pull the image by running the following command on this repository:
+
+```
+docker-compose pull
+```
+
+To run the instance, you need to have a .env file with your secrets at the project's root. Once you have pulled the image, run:
+
+```
+npm run compose-local
+```
+
+This will spin up two containers:
+- postgres: The database.
+- discord-bot: The node.js environment to run the bot.
