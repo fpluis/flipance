@@ -1,0 +1,36 @@
+# docker-compose.yml
+
+version: "3.9"
+services:
+  postgres:
+    image: postgres
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - ${DB_PORT}:${DB_PORT}
+    volumes:
+      - flipance-db:/var/lib/postgresql/data
+    hostname: postgres
+    networks:
+      - dbnet
+
+  discord-bot:
+    image: fpluis/flipance-discord-bot
+    build:
+      context: .
+    env_file: .env
+    environment:
+      DB_HOSTNAME: "postgres"
+    # It's crucial that the postgres image starts first to prepare the DB
+    depends_on:
+      - postgres
+    networks:
+      - dbnet
+
+volumes:
+  flipance-db:
+
+networks:
+  dbnet:
+    name: flipance-database-network

@@ -1,0 +1,9 @@
+.terraform
+assets
+coverage
+logs
+node_modules
+.env
+*.tfvars
+*.tf
+.terraform.lock.hcl

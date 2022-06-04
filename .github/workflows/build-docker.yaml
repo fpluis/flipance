@@ -1,0 +1,11 @@
+name: Build Docker Image
+on: [push]
+jobs:
+  Explore-GitHub-Actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build the docker-compose stack
+        run: docker-compose build
+      - name: Push the image to the registry
+        run: docker-compose push
