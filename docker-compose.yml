@@ -9,8 +9,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - 5432:5432
-    volumes:
-      - flipance-db:/var/lib/postgresql/data
     hostname: postgres
     networks:
       - dbnet
