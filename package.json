@@ -32,6 +32,7 @@
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "setup-deployment": "terraform init -backend-config=backend.conf",
     "deploy": "terraform apply -var-file=\"secret.tfvars\"",
-    "pull-env": "node --experimental-vm-modules scripts/pull-env.js"
+    "pull-env": "node --experimental-vm-modules scripts/pull-env.js",
+    "compose-local": "docker-compose -f docker-compose.yml -f docker-compose.override.yml up"
   }
 }

@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  discord-bot:
+    env_file: .env
+
+  postgres:
+    volumes:
+      - flipance-db:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
