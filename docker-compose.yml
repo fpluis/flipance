@@ -21,10 +21,7 @@ services:
       - postgres
     networks:
       - dbnet
-
-volumes:
-  flipance-db:
-
+    restart: on-failure
 
 networks:
   dbnet:

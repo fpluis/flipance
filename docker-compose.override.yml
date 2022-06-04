@@ -11,4 +11,4 @@ services:
       - flipance-db:/var/lib/postgresql/data
 
 volumes:
-  pgdata:
+  flipance-db:
