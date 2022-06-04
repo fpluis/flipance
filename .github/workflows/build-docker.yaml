@@ -5,6 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Create .env file with defaults
+        run: |
+        touch .env
+        echo POSTGRES_USER=postgres >> .env
+        echo POSTGRES_PASSWORD=1234 >> .env
       - name: Build the docker-compose stack
         run: docker-compose build
       - name: Push the image to the registry
