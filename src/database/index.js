@@ -398,6 +398,8 @@ const toAlertObject = (alert) => {
   }
 
   const {
+    discordId,
+    discord_id: alertDiscordId = discordId,
     settings_id: settingsId,
     user_id: userId,
     created_at: createdAt,
@@ -413,6 +415,7 @@ const toAlertObject = (alert) => {
   } = alert;
   return {
     ...props,
+    discordId: alertDiscordId,
     settingsId,
     userId,
     createdAt,
