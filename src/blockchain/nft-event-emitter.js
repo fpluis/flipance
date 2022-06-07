@@ -16,6 +16,7 @@ const openSeaSSAddress = "0x495f947276749Ce646f68AC8c248420045cb7b5e";
 const townStarAddress = "0xc36cF0cFcb5d905B8B513860dB0CFE63F6Cf9F5c";
 
 const {
+  ETHERSCAN_API_KEY,
   INFURA_PROJECT_ID,
   POCKET_PROJECT_ID,
   POCKET_SECRET_KEY,
@@ -23,6 +24,7 @@ const {
 } = process.env;
 
 const ethProvider = getDefaultProvider("homestead", {
+  etherscan: ETHERSCAN_API_KEY,
   infura: INFURA_PROJECT_ID,
   pocket: {
     applicationId: POCKET_PROJECT_ID,

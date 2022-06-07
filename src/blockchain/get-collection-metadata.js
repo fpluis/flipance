@@ -8,6 +8,7 @@ dotenv.config({ path: path.resolve(".env") });
 const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
 
 const {
+  ETHERSCAN_API_KEY,
   INFURA_PROJECT_ID,
   POCKET_PROJECT_ID,
   POCKET_SECRET_KEY,
@@ -15,6 +16,7 @@ const {
 } = process.env;
 
 const ethProvider = getDefaultProvider("homestead", {
+  etherscan: ETHERSCAN_API_KEY,
   infura: INFURA_PROJECT_ID,
   pocket: {
     applicationId: POCKET_PROJECT_ID,
