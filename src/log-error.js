@@ -16,5 +16,5 @@ if (!existsSync(ERROR_OUTPUT_FOLDER)) {
 const errorStream = createWriteStream(ERROR_OUTPUT_PATH, { flags: "a" });
 
 export default function logError(message) {
-  errorStream.write(`${message}\n`);
+  errorStream.write(`${new Date().toISOString()}: ${message}\n`);
 }
