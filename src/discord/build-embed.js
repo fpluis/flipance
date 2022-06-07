@@ -39,7 +39,6 @@ export default async ({
   price: priceEth,
   collection,
   metadataUri,
-  profit,
   collectionFloor,
   tokenIds = [],
   tokenId: originalTokenId,
@@ -177,20 +176,6 @@ export default async ({
       name: "Name",
       value,
     });
-  }
-
-  if (profit) {
-    if (Number(profit) > 0) {
-      embed.fields.push({
-        name: "Profit",
-        value: `${profit} ETH`,
-      });
-    } else {
-      embed.fields.push({
-        name: "Loss",
-        value: `${profit} ETH`,
-      });
-    }
   }
 
   if (metadata.attributes && Array.isArray(metadata.attributes)) {
