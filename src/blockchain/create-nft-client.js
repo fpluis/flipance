@@ -7,6 +7,7 @@ import path from "path";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import moralisClient from "moralis/node.js";
+import logError from "../log-error.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -74,9 +75,6 @@ const getNFTScanNFTs = async (address) => {
         ({ nft_asset_id, nft_creator }) =>
           `${nft_creator}/${parseInt(nft_asset_id, 16)}`
       );
-    })
-    .catch(() => {
-      return [];
     });
 };
 
@@ -96,17 +94,25 @@ export default async () => {
    * @param {String} address - The ETH address
    * @return {Array[String]} - The NFTs represented as "collection/tokenId"
    */
-  const getAddressNFTs = (address = "") =>
-    moralisClient.Web3API.account
-      .getNFTs({
-        address,
-      })
-      .then(({ result }) => {
-        return result.map(
-          ({ token_address, token_id }) => `${token_address}/${token_id}`
-        );
-      })
-      .catch(() => getNFTScanNFTs(address));
+  const getAddressNFTs = (address = "") => {
+    try {
+      return moralisClient.Web3API.account
+        .getNFTs({
+          address,
+        })
+        .then(({ result }) => {
+          return result.map(
+            ({ token_address, token_id }) => `${token_address}/${token_id}`
+          );
+        })
+        .catch(() => getNFTScanNFTs(address));
+    } catch (error) {
+      logError(
+        `Error fetching NFTs for address ${address}: ${error.toString()}`
+      );
+      return [];
+    }
+  };
 
   return {
     getAddressNFTs,
