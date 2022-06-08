@@ -26,5 +26,9 @@
   {
     "id": "settleAuction",
     "name": "Settle an auction"
+  },
+  {
+    "id": "listing",
+    "name": "New listing"
   }
 ]

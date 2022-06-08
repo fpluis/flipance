@@ -4,7 +4,6 @@
 
 import path from "path";
 import dotenv from "dotenv";
-import { utils as etherUtils } from "ethers";
 import fetch from "node-fetch";
 import sleep from "../sleep.js";
 
@@ -53,8 +52,8 @@ const callLRWithRetries = (endpoint = "", retries = 1) =>
  * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
  * for reference.
  * @param  {String} collection - The collection's Ethereum address.
- * @param  {Number} first - The number of offers to retrieve.
- * the endpoint.
+ * @param  {Date} startTime - The date object for the moment from which to
+ * retrieve the collections.
  * @typedef LooksRareOffer - The LooksRare offer.
  * @param hash - The bid's hash.
  * @param price - The bid's amount in wei.
@@ -62,9 +61,15 @@ const callLRWithRetries = (endpoint = "", retries = 1) =>
  * @param signer - The buyer's Ethereum address.
  * @return {Array[LooksRareOffer]} offers - The result of the call.
  */
-export const getCollectionOffers = (collection, first = 1) =>
+export const getCollectionOffers = (collection, startTime) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=${first}&status[]=VALID&sort=PRICE_DESC`
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=150status[]=VALID&sort=PRICE_DESC`
+  ).then((orders) =>
+    orders.filter(
+      ({ startTime: orderTime }) =>
+        orderTime > startTime.getTime() / 1000 &&
+        orderTime < new Date().getTime() / 1000
+    )
   );
 
 /**
@@ -72,16 +77,17 @@ export const getCollectionOffers = (collection, first = 1) =>
  * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
  * for reference.
  * @param  {String} collection - The collection's Ethereum address.
+ * @param  {Date} startTime - The date object for the moment from which to
+ * retrieve the collections.
  * @return {Number} floor - The collection's floor in Ether.
  */
-export const getCollectionFloor = (collection) =>
+export const getCollectionListings = (collection, startTime) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=1&status[]=VALID&sort=PRICE_ASC`
-  ).then((listings) => {
-    if (listings.length === 0) {
-      return null;
-    }
-
-    const [{ price }] = listings;
-    return Number(etherUtils.formatEther(price));
-  });
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=150&status[]=VALID&sort=PRICE_ASC`
+  ).then((orders) =>
+    orders.filter(
+      ({ startTime: orderTime }) =>
+        orderTime > startTime.getTime() / 1000 &&
+        orderTime < new Date().getTime() / 1000
+    )
+  );
