@@ -440,11 +440,11 @@ discordClient.once("ready", async () => {
   });
 
   discordClient.on("error", (error) => {
-    logError(`Bot encountered error:`, error);
+    logError(`Discord client error: ${error.toString()}`);
   });
 
   discordClient.on("shardError", (error) => {
-    logError("A websocket connection encountered an error:", error);
+    logError(`Discord client shard error: ${error.toString()}`);
   });
 });
 
@@ -454,5 +454,6 @@ discordClient.on("guildCreate", (guild) => {
 });
 
 process.on("unhandledRejection", (error) => {
-  logError("Unhandled promise rejection:", error);
+  logError(`Unhandled promise rejection: ${error.toString()}`);
+  process.exit(-1);
 });
