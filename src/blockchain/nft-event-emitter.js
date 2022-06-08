@@ -23,8 +23,8 @@ const townStarAbi = JSON.parse(readFileSync("data/townStarAbi.json"));
 const openSeaSSAddress = "0x495f947276749Ce646f68AC8c248420045cb7b5e";
 const townStarAddress = "0xc36cF0cFcb5d905B8B513860dB0CFE63F6Cf9F5c";
 
-const LR_SLICE_SIZE = 30;
-const POLL_COLLECTION_SLICE_DELAY = 15 * 1000;
+const LR_SLICE_SIZE = 60;
+const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 10000;
 
 /**
@@ -36,7 +36,6 @@ const MAX_BLOCK_CACHE_SIZE = 10000;
  */
 export default (ethProvider, collectionsToPoll = []) => {
   let blockCache = {};
-  let destroyed = false;
   const eventEmitter = new EventEmitter();
 
   /*
@@ -605,17 +604,20 @@ export default (ethProvider, collectionsToPoll = []) => {
   /**
    * Generic poll function for the LR API.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Date} startTime - The Date from which to fetch orders.
+   * @param {Object} polledTimes - A map of collection => last polled time.
    * @param {Function} call - The function that fetches the endpoint and
    * returns a result.
    * @param {Function} handleResponse - The function that handles the response
    * returned by the _call_ parameter.
    */
-  const pollLRAPI = async (collections, startTime, call, handleResponse) => {
+  const pollLRAPI = async (collections, polledTimes, call, handleResponse) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
-        const response = await call(collection, startTime);
-        handleResponse(collection, response);
+        const collectionPolledAt = polledTimes[collection];
+        return call(collection, collectionPolledAt).then((response) => {
+          handleResponse(collection, response);
+          polledTimes[collection] = new Date();
+        });
       })
     );
     const otherCollections = collections.slice(LR_SLICE_SIZE);
@@ -623,7 +625,7 @@ export default (ethProvider, collectionsToPoll = []) => {
       await sleep(POLL_COLLECTION_SLICE_DELAY);
       return pollLRAPI(
         collections.slice(LR_SLICE_SIZE),
-        startTime,
+        polledTimes,
         call,
         handleResponse
       );
@@ -636,9 +638,9 @@ export default (ethProvider, collectionsToPoll = []) => {
    * Updates the collection floors of all the collections for which at least
   one user owns an NFT.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Date} startTime - The Date from which to fetch orders.
+   * @param {Object} polledTimes - A map of collection => last polled time.
    */
-  const pollLRListings = async (collections, startTime) => {
+  const pollLRListings = async (collections, polledTimes) => {
     const handleResponse = async (collection, listings) => {
       if (listings.length === 0) {
         return;
@@ -661,7 +663,7 @@ export default (ethProvider, collectionsToPoll = []) => {
 
     return pollLRAPI(
       collections,
-      startTime,
+      polledTimes,
       getCollectionListings,
       handleResponse
     );
@@ -673,9 +675,9 @@ export default (ethProvider, collectionsToPoll = []) => {
    * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
    * for reference.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Date} startTime - The Date from which to fetch orders.
+   * @param {Object} polledTimes - A map of collection => last polled time.
    */
-  const pollLRCollectionOffers = (collections, startTime) => {
+  const pollLRCollectionOffers = (collections, polledTimes) => {
     const handleResponse = async (collection, offers) => {
       if (offers.length === 0) {
         return;
@@ -698,7 +700,7 @@ export default (ethProvider, collectionsToPoll = []) => {
 
     return pollLRAPI(
       collections,
-      startTime,
+      polledTimes,
       getCollectionOffers,
       handleResponse
     );
@@ -706,16 +708,12 @@ export default (ethProvider, collectionsToPoll = []) => {
 
   /**
    * Poll LooksRare off-chain events (listings and offers).
-   * @param {Date} startTime - The Date from which to fetch events.
+   * @param {Object} polledTimes - A map of collection => last polled time.
    */
-  const pollLooksRare = async (startTime = new Date()) => {
-    await pollLRCollectionOffers(collectionsToPoll, startTime);
+  const pollLooksRare = async (polledTimes = new Date()) => {
+    await pollLRCollectionOffers(collectionsToPoll, polledTimes);
     await sleep(POLL_COLLECTION_SLICE_DELAY);
-    await pollLRListings(collectionsToPoll, startTime);
-    await sleep(POLL_COLLECTION_SLICE_DELAY);
-    if (!destroyed) {
-      pollLooksRare();
-    }
+    await pollLRListings(collectionsToPoll, polledTimes);
   };
 
   // On-chain listeners
@@ -727,11 +725,17 @@ export default (ethProvider, collectionsToPoll = []) => {
     x2y2EventListener,
   ].map((createListener) => createListener());
 
+  // Poll new events since five minutes ago initially
+  const polledTimes = collectionsToPoll.reduce((map, collection) => {
+    map[collection] = new Date(
+      new Date().setMinutes(new Date().getMinutes() - 5)
+    );
+    return map;
+  }, {});
   // API listeners
-  pollLooksRare();
+  pollLooksRare(polledTimes);
 
   eventEmitter.destroy = () => {
-    destroyed = true;
     contracts.forEach((contract) => contract.removeAllListeners());
     eventEmitter.removeAllListeners();
   };
