@@ -68,6 +68,11 @@ const getNFTScanNFTs = async (address) => {
   })
     .then((res) => res.json())
     .then((response) => {
+      if (response == null || response.data == null) {
+        logError(`Empty NFTScan response: ${response}`);
+        return [];
+      }
+
       const {
         data: { content },
       } = response;
@@ -75,6 +80,10 @@ const getNFTScanNFTs = async (address) => {
         ({ nft_asset_id, nft_creator }) =>
           `${nft_creator}/${parseInt(nft_asset_id, 16)}`
       );
+    })
+    .catch((error) => {
+      logError(`Error fetching NFTs from NFTScan: ${error.toString()}`);
+      return [];
     });
 };
 
