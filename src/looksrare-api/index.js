@@ -63,7 +63,7 @@ const callLRWithRetries = (endpoint = "", retries = 1) =>
  */
 export const getCollectionOffers = (collection, startTime) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=150status[]=VALID&sort=PRICE_DESC`
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=150&status[]=VALID&sort=PRICE_DESC`
   ).then((orders) =>
     orders.filter(
       ({ startTime: orderTime }) =>
@@ -83,7 +83,7 @@ export const getCollectionOffers = (collection, startTime) =>
  */
 export const getCollectionListings = (collection, startTime) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=150&status[]=VALID&sort=PRICE_ASC`
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=150&status[]=VALID&sort=NEWEST`
   ).then((orders) =>
     orders.filter(
       ({ startTime: orderTime }) =>

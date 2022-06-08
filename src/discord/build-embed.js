@@ -332,6 +332,7 @@ export default async (args) => {
     tokenId: originalTokenId,
     endsAt,
   } = args;
+
   const tokenId =
     originalTokenId == null
       ? tokenIds.length > 0
@@ -346,6 +347,7 @@ export default async (args) => {
         return {};
       })
     : Promise.resolve({}));
+
   const collectionMetadata = await getCollectionMetadata(collection);
   const marketplace = marketplaceIdToMdLink(marketplaceId);
   const collectionUrl = `https://looksrare.org/collections/${collection}`;
@@ -377,12 +379,14 @@ export default async (args) => {
     ]);
   }
 
-  embed.fields.push({
-    name: "Buyer",
-    value: `[${makeAddressReadable(
-      buyerAddress
-    )}](https://etherscan.io/address/${buyerAddress})`,
-  });
+  if (buyerAddress) {
+    embed.fields.push({
+      name: "Buyer",
+      value: `[${makeAddressReadable(
+        buyerAddress
+      )}](https://etherscan.io/address/${buyerAddress})`,
+    });
+  }
 
   if (sellerAddress) {
     embed.fields.push({

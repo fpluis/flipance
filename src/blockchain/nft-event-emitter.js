@@ -646,8 +646,16 @@ export default (ethProvider, collectionsToPoll = []) => {
         return;
       }
 
-      listings.forEach((listing) => {
-        const { price, endTime: endsAt, signer } = listing;
+      listings.forEach(async (listing) => {
+        const { price, endTime: endsAt, signer, tokenId } = listing;
+        const tokenContract = new ethers.Contract(
+          collection,
+          erc721Abi,
+          ethProvider
+        );
+        const metadataUri = await tokenContract.tokenURI(tokenId).catch(() => {
+          return null;
+        });
         emit("listing", {
           ...listing,
           price: etherUtils.formatEther(price),
@@ -655,6 +663,7 @@ export default (ethProvider, collectionsToPoll = []) => {
           endsAt: endsAt * 1000,
           marketplace: "looksRare",
           collection,
+          metadataUri,
           network: "eth",
           standard: "ERC-721",
         });

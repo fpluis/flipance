@@ -179,7 +179,7 @@ const handleListing = async ({ args, dbClient, collectionMap }) => {
   }
 
   watchers.forEach(async (watcher) => {
-    const { discordId, channelId, tokenIds } = watcher;
+    const { discordId, channelId } = watcher;
     if (isAllowedByPreferences(args, watcher)) {
       try {
         const isUserMessage = channelId == null;
@@ -189,7 +189,6 @@ const handleListing = async ({ args, dbClient, collectionMap }) => {
         const embed = await buildEmbed({
           ...args,
           target: isUserMessage ? "user" : "server",
-          tokenIds,
         });
         target.send(embed).catch((error) => {
           logError(
