@@ -27,15 +27,20 @@ const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 10000;
 
+const minutesAgo = (minutes = 5) =>
+  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
+
 /**
  * Create an EventEmitter that listens to transactions on the main
  * NFT marketplaces and emits standardized events.
  * @param {providers.Provider} ethProvider - An ethers.js provider already configured
- * @param {String[]} collectionsToPoll - The collections for which to poll offers and listings. On-chain events for other collections will still be emitted even if the collection is not part of this argument.
+ * @param {String[]} collections - The collections for which to poll offers and listings. On-chain events for other collections will still be emitted even if the collection is not part of this argument.
  * @return {EventEmitter}
  */
-export default (ethProvider, collectionsToPoll = []) => {
+export default (ethProvider, collections = []) => {
+  let destroyed = false;
   let blockCache = {};
+  let collectionsToPoll = collections;
   const eventEmitter = new EventEmitter();
 
   /*
@@ -613,7 +618,7 @@ export default (ethProvider, collectionsToPoll = []) => {
   const pollLRAPI = async (collections, polledTimes, call, handleResponse) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
-        const collectionPolledAt = polledTimes[collection];
+        const collectionPolledAt = polledTimes[collection] || minutesAgo(5);
         return call(collection, collectionPolledAt).then((response) => {
           handleResponse(collection, response);
           polledTimes[collection] = new Date();
@@ -723,6 +728,10 @@ export default (ethProvider, collectionsToPoll = []) => {
     await pollLRCollectionOffers(collectionsToPoll, polledTimes);
     await sleep(POLL_COLLECTION_SLICE_DELAY);
     await pollLRListings(collectionsToPoll, polledTimes);
+    await sleep(POLL_COLLECTION_SLICE_DELAY);
+    if (!destroyed) {
+      pollLooksRare(polledTimes);
+    }
   };
 
   // On-chain listeners
@@ -736,17 +745,20 @@ export default (ethProvider, collectionsToPoll = []) => {
 
   // Poll new events since five minutes ago initially
   const polledTimes = collectionsToPoll.reduce((map, collection) => {
-    map[collection] = new Date(
-      new Date().setMinutes(new Date().getMinutes() - 5)
-    );
+    map[collection] = minutesAgo(5);
     return map;
   }, {});
   // API listeners
   pollLooksRare(polledTimes);
 
   eventEmitter.destroy = () => {
+    destroyed = true;
     contracts.forEach((contract) => contract.removeAllListeners());
     eventEmitter.removeAllListeners();
+  };
+
+  eventEmitter.setCollections = (collections) => {
+    collectionsToPoll = collections;
   };
 
   return eventEmitter;
