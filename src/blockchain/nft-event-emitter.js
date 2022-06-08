@@ -23,8 +23,8 @@ const townStarAbi = JSON.parse(readFileSync("data/townStarAbi.json"));
 const openSeaSSAddress = "0x495f947276749Ce646f68AC8c248420045cb7b5e";
 const townStarAddress = "0xc36cF0cFcb5d905B8B513860dB0CFE63F6Cf9F5c";
 
-const LR_SLICE_SIZE = 120;
-const POLL_COLLECTION_SLICE_DELAY = 60 * 1000;
+const LR_SLICE_SIZE = 30;
+const POLL_COLLECTION_SLICE_DELAY = 15 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 10000;
 
 /**
