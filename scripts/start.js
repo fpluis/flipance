@@ -53,14 +53,11 @@ const ethProvider = getDefaultProvider("homestead", {
  * @param {Object} params.nftClient - The initialized client to poll NFT
  * @param {EventEmitter} params.nftEventEmitter - The initialized client to
  * poll NFT on-chain events.
- * @param {Client} params.botClient - The initialized client to
- * poll NFT on-chain events.
  */
 const monitorBlockchainEvents = async ({
   dbClient,
   nftClient,
   nftEventEmitter,
-  botClient,
 }) => {
   /*
    * Updates the tokens associated to an alert to always monitor the
@@ -152,6 +149,10 @@ const monitorBlockchainEvents = async ({
   const collectionMap = await createCollectionMap();
   nftEventEmitter.setCollections(Object.keys(collectionMap));
   nftEventEmitter.removeAllListeners();
+  const botClient = await createBotClient({
+    dbClient,
+    nftClient,
+  });
   nftEventEmitter.on("event", (event) => {
     const entry = collectionMap[event.collection];
     if (entry) {
@@ -164,11 +165,11 @@ const monitorBlockchainEvents = async ({
     botClient.emit("nftEvent", event);
   });
   await sleep(EVENT_LISTENER_REFRESH_PERIOD);
+  botClient.destroy();
   return monitorBlockchainEvents({
     dbClient,
     nftClient,
     nftEventEmitter,
-    botClient,
   });
 };
 
@@ -176,11 +177,7 @@ const start = async () => {
   const dbClient = await createDbClient();
   const nftClient = await createNFTClient();
   const nftEventEmitter = createNFTEventEmitter(ethProvider, []);
-  const botClient = await createBotClient({
-    dbClient,
-    nftClient,
-  });
-  monitorBlockchainEvents({ dbClient, nftClient, nftEventEmitter, botClient });
+  monitorBlockchainEvents({ dbClient, nftClient, nftEventEmitter });
 };
 
 start();
