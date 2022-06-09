@@ -250,10 +250,10 @@ const handleWalletAlert = async ({
     });
   }
 
-  const nickname = interaction.options.getString("nickname").trim();
-  if (nickname != null && !isValidNickname(nickname)) {
+  const nicknameOption = interaction.options.getString("nickname");
+  if (nicknameOption != null && !isValidNickname(nicknameOption)) {
     return interaction.editReply({
-      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
+      content: `Nickname "${nicknameOption}" contains spaces. Please, remove the spaces and try again.`,
       ephemeral: true,
     });
   }
@@ -264,7 +264,7 @@ const handleWalletAlert = async ({
     type: "wallet",
     address,
     tokens,
-    nickname,
+    nickname: nicknameOption ? nicknameOption.trim() : null,
   });
   switch (result) {
     case "success":
