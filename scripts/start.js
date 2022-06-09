@@ -164,3 +164,7 @@ process.on("unhandledRejection", (error) => {
   logError(`Unhandled promise rejection: ${error.toString()}`);
   process.exit(-1);
 });
+
+process.on("uncaughtException", (error) => {
+  console.log(error);
+});
