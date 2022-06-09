@@ -1118,19 +1118,29 @@ export const createDbClient = async ({
       marketplace,
       "",
     ];
-    const { rows } = await client.query(
-      `INSERT INTO offers (collection, price, ends_at, created_at, marketplace, token_id)\
+    return client
+      .query(
+        `INSERT INTO offers (collection, price, ends_at, created_at, marketplace, token_id)\
       VALUES($1, $2, $3, $4, $5, $6)\
       ON CONFLICT (collection, token_id)\
       DO\
         UPDATE SET collection = $1, price = $2, ends_at = $3, created_at = $4, marketplace = $5, token_id = $6\
       RETURNING *`,
-      values
-    );
-    return {
-      result: rows.length > 0 ? "success" : "error",
-      object: toOfferObject(rows[0]),
-    };
+        values
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "error",
+          object: toOfferObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        const { constraint } = error;
+        return {
+          object: null,
+          result: constraint === "offers_pkey" ? "already-exists" : "error",
+        };
+      });
   };
 
   /**
@@ -1167,7 +1177,7 @@ export const createDbClient = async ({
    * @param {Marketplace} params.marketplace - The collection's Ethereum address.
    * @return {CollectionFloorResponse}
    */
-  const setCollectionFloor = async ({
+  const setCollectionFloor = ({
     collection,
     price,
     endsAt,
@@ -1177,20 +1187,31 @@ export const createDbClient = async ({
       return { result: "missing-arguments", object: null };
     }
 
-    const { rows } = await client.query(
-      `INSERT INTO floor_prices (collection, created_at, price, marketplace, ends_at) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [
-        collection.toLowerCase(),
-        new Date(),
-        price,
-        marketplace,
-        new Date(endsAt),
-      ]
-    );
-    return {
-      result: rows.length > 0 ? "success" : "error",
-      object: toCollectionFloorObject(rows[0]),
-    };
+    return client
+      .query(
+        `INSERT INTO floor_prices (collection, created_at, price, marketplace, ends_at) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [
+          collection.toLowerCase(),
+          new Date(),
+          price,
+          marketplace,
+          new Date(endsAt),
+        ]
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "error",
+          object: toCollectionFloorObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        const { constraint } = error;
+        return {
+          object: null,
+          result:
+            constraint === "floor_prices_pkey" ? "already-exists" : "error",
+        };
+      });
   };
 
   /**
