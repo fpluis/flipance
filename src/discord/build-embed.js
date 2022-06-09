@@ -229,15 +229,30 @@ const describeAuctionBid = ({
  * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} priceString - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
+ * @param {String} marketplaceId - One of the marketplace ids defined in
+ * data/marketplaces.json
+ * @param {String} collection - The collection's Ethereum address
+ * @param {String} tokenId - The token's id
  * @return EmbedDescription
  */
-const describeListing = ({ isSeller, priceString, marketplace }) => {
+const describeListing = ({
+  isSeller,
+  priceString,
+  marketplace,
+  marketplaceId,
+  collection,
+  tokenId,
+}) => {
   const description = isSeller
     ? `You listed an item in ${marketplace} for ${priceString}`
     : `New listing on ${marketplace} for ${priceString}`;
   return {
     title: "New Listing!",
     description,
+    url:
+      marketplaceId === "looksRare"
+        ? `https://looksrare.org/collections/${collection}/${tokenId}`
+        : `https://looksrare.org/collections/${collection}/${tokenId}`,
   };
 };
 
@@ -290,7 +305,7 @@ const describeEvent = (args) => {
  * Create the embed descriptions for an NFT event.
  * @param {String} eventType - One of the event ids defined in data/events.json
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} eventType - One of the marketplace ids defined in
+ * @param {String} marketplace - One of the marketplace ids defined in
  * data/marketplaces.json
  * @param {String} seller - The seller's Ethereum address
  * @param {String} buyer - The buyer's Ethereum address
@@ -357,6 +372,7 @@ export default async (args) => {
       ...args,
       collectionMetadata,
       marketplace,
+      marketplaceId,
       collectionUrl,
     }),
     fields: [
