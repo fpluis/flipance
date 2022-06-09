@@ -38,21 +38,34 @@ const getNFTScanToken = async () => {
     `https://restapi.nftscan.com/gw/token?apiKey=${NFT_SCAN_API_ID}&apiSecret=${NFT_SCAN_SECRET}`
   )
     .then((res) => res.json())
-    .then((result) => {
+    .then(async (response) => {
+      if (response == null || response.data == null) {
+        logError(`Empty NFTScan getToken response: ${response}`);
+        return null;
+      }
+
       const {
         data: { accessToken, expiration },
-      } = result;
+      } = response;
       const newExpiry = new Date();
       newExpiry.setSeconds(newExpiry.getTime() + expiration * 1000);
       NFTScanTokenCache.expiry = newExpiry;
       NFTScanTokenCache.token = accessToken;
       return accessToken;
+    })
+    .catch((error) => {
+      logError(`Error fetching NFTScan access token: ${error.toString()}`);
+      return null;
     });
 };
 
 // See https://developer.nftscan.com/doc/#operation/getAllNftByUserAddressUsingPOST
 const getNFTScanNFTs = async (address) => {
   const accessToken = await getNFTScanToken();
+  if (accessToken == null) {
+    return [];
+  }
+
   return fetch(`https://restapi.nftscan.com/api/v1/getAllNftByUserAddress`, {
     method: "POST",
     headers: {
@@ -69,7 +82,7 @@ const getNFTScanNFTs = async (address) => {
     .then((res) => res.json())
     .then((response) => {
       if (response == null || response.data == null) {
-        logError(`Empty NFTScan response: ${response}`);
+        logError(`Empty NFTScan getNFTs response: ${response}`);
         return [];
       }
 
