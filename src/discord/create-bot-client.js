@@ -15,6 +15,8 @@ const {
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
 
+const MAX_MINUTES_AGO_TO_NOTIFY = 5;
+
 /**
  * Determine whether a user/server should be notified of an NFT event
  * based on their preferences
@@ -61,6 +63,10 @@ const isAllowedByPreferences = (
   return true;
 };
 
+const minutesAgo = (timestamp) => {
+  return (new Date().getTime() - new Date(timestamp).getTime()) / 60000;
+};
+
 export default ({ dbClient, nftClient }) =>
   new Promise((resolve, reject) => {
     const discordClient = new Client({ intents: [Intents.FLAGS.GUILDS] });
@@ -79,23 +85,43 @@ export default ({ dbClient, nftClient }) =>
      * attempt to notify the discord servers that watch the collection.
      */
     const handleOffer = async ({ args, dbClient }) => {
-      const {
+      const { collection, marketplace, price, startTime, endsAt, watchers } =
+        args;
+      const { object: currentOffer } = await dbClient.getCollectionOffer({
         collection,
-        marketplace,
-        price,
-        endsAt: offerEndsAt,
-        highestOffer,
-        highestOfferEndsAt,
-        watchers,
-        collectionFloor,
-      } = args;
-      if (price > highestOffer || highestOfferEndsAt < new Date().getTime()) {
+      });
+      const { object: floor } = await dbClient.getCollectionFloor({
+        collection,
+      });
+      const { price: collectionFloor = 0 } = floor || {};
+      const {
+        endsAt: currentOfferEndsAt = new Date("1970-01-01"),
+        price: currentOfferPrice = 0,
+      } = currentOffer || {};
+      if (
+        price > currentOfferPrice ||
+        currentOfferEndsAt < new Date().getTime()
+      ) {
+        console.log(
+          `New highest offer for "${collection}": ${JSON.stringify(
+            args
+          )}; current offer ${JSON.stringify(
+            currentOffer
+          )}; floor: ${JSON.stringify(floor)}`
+        );
         await dbClient.setCollectionOffer({
-          address: collection,
+          collection,
           price,
-          endsAt: offerEndsAt,
+          endsAt,
           marketplace,
         });
+
+        // Don't notify events that happened too far in the past, but still
+        // log them to the DB if they are relevant.
+        if (minutesAgo(startTime * 1000) > MAX_MINUTES_AGO_TO_NOTIFY) {
+          return;
+        }
+
         watchers.forEach(async (watcher) => {
           const { discordId, channelId, tokenIds } = watcher;
           if (isAllowedByPreferences({ ...args, collectionFloor }, watcher)) {
@@ -136,15 +162,39 @@ export default ({ dbClient, nftClient }) =>
         marketplace,
         price,
         watchers,
-        collectionFloor,
         seller,
+        startTime,
+        endsAt,
       } = args;
-      if (collectionFloor == null || price < collectionFloor) {
+      const { object: floor } = await dbClient.getCollectionFloor({
+        collection,
+      });
+      const {
+        price: collectionFloor = 0,
+        endsAt: currentEndsAt = new Date("1970-01-01"),
+      } = floor || {};
+      if (
+        collectionFloor === 0 ||
+        price < collectionFloor ||
+        currentEndsAt < new Date().getTime()
+      ) {
+        console.log(
+          `New floor listing for ${collection}: ${JSON.stringify(
+            args
+          )}; current listing ${JSON.stringify(floor)}`
+        );
         await dbClient.setCollectionFloor({
-          address: collection,
+          collection,
           price,
+          endsAt,
           marketplace,
         });
+      }
+
+      // Don't notify events that happened too far in the past, but still
+      // log them to the DB if they are relevant.
+      if (minutesAgo(startTime * 1000) > MAX_MINUTES_AGO_TO_NOTIFY) {
+        return;
       }
 
       watchers.forEach(async (watcher) => {

@@ -20,15 +20,15 @@ const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
 const erc1155Abi = JSON.parse(readFileSync("data/erc1155Abi.json"));
 const townStarAbi = JSON.parse(readFileSync("data/townStarAbi.json"));
 
-const openSeaSSAddress = "0x495f947276749Ce646f68AC8c248420045cb7b5e";
-const townStarAddress = "0xc36cF0cFcb5d905B8B513860dB0CFE63F6Cf9F5c";
+const openSeaSSAddress = "0x495f947276749ce646f68ac8c248420045cb7b5e";
+const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
 
 const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 10000;
 
-const minutesAgo = (minutes = 5) =>
-  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
+// const minutesAgo = (minutes = 5) =>
+//   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
 /**
  * Create an EventEmitter that listens to transactions on the main
@@ -38,9 +38,19 @@ const minutesAgo = (minutes = 5) =>
  * @return {EventEmitter}
  */
 export default (ethProvider, collections = []) => {
-  let destroyed = false;
+  // let pollLRTimeout;
   let blockCache = {};
   let collectionsToPoll = collections;
+  let contracts;
+  const polledTimes = collections.reduce((map, collection) => {
+    // Poll events since the start of time
+    map[collection.toLowerCase()] = {
+      listings: new Date("1970-01-01"),
+      offers: new Date("1970-01-01"),
+    };
+
+    return map;
+  }, {});
   const eventEmitter = new EventEmitter();
 
   /*
@@ -148,7 +158,7 @@ export default (ethProvider, collections = []) => {
     try {
       props.gas = gasUsed ? gasUsed.toNumber() : 0;
       const openSeaSSTransfer = logs.find(
-        ({ address }) => address === openSeaSSAddress
+        ({ address = "" }) => address.toLowerCase() === openSeaSSAddress
       );
       if (openSeaSSTransfer) {
         const { data, topics } = openSeaSSTransfer;
@@ -214,7 +224,7 @@ export default (ethProvider, collections = []) => {
             return null;
           });
         return {
-          collection,
+          collection: collection.toLowerCase(),
           tokenId,
           metadataUri,
           standard: "ERC-721",
@@ -243,7 +253,7 @@ export default (ethProvider, collections = []) => {
 
         // eslint-disable-next-line no-undef
         const tokenId = BigInt(tokenIdHex).toString(10);
-        if (collection === townStarAddress) {
+        if (collection.toLowerCase() === townStarAddress) {
           const townStarContract = new ethers.Contract(
             townStarAddress,
             townStarAbi,
@@ -260,7 +270,7 @@ export default (ethProvider, collections = []) => {
             },
           ] = events;
           return {
-            collection,
+            collection: collection.toLowerCase(),
             tokenId,
             metadataUri,
             standard: "ERC-1155",
@@ -279,7 +289,7 @@ export default (ethProvider, collections = []) => {
           return null;
         });
         return {
-          collection,
+          collection: collection.toLowerCase(),
           tokenId,
           metadataUri,
           standard: "ERC-1155",
@@ -535,7 +545,7 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event);
       emit("createAuction", {
         transactionHash,
-        collection,
+        collection: collection.toLowerCase(),
         price,
         seller,
         tokenId,
@@ -609,31 +619,29 @@ export default (ethProvider, collections = []) => {
   /**
    * Generic poll function for the LR API.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Object} polledTimes - A map of collection => last polled time.
    * @param {Function} call - The function that fetches the endpoint and
    * returns a result.
    * @param {Function} handleResponse - The function that handles the response
    * returned by the _call_ parameter.
    */
-  const pollLRAPI = async (collections, polledTimes, call, handleResponse) => {
+  const pollLRAPI = async (collections, call, handleResponse, queryType) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
-        const collectionPolledAt = polledTimes[collection] || minutesAgo(5);
-        return call(collection, collectionPolledAt).then((response) => {
-          handleResponse(collection, response);
-          polledTimes[collection] = new Date();
+        const collectionTimes = polledTimes[collection] || {};
+        const { queryType: collectionPolledAt = new Date("1970-01-01") } =
+          collectionTimes;
+        const maxAge = collectionPolledAt;
+        return call({ collection, maxAge }).then((response) => {
+          handleResponse(collection, response, collectionPolledAt);
+          collectionTimes[queryType] = new Date();
+          polledTimes[collection] = collectionTimes;
         });
       })
     );
     const otherCollections = collections.slice(LR_SLICE_SIZE);
     if (otherCollections.length > 0) {
       await sleep(POLL_COLLECTION_SLICE_DELAY);
-      return pollLRAPI(
-        collections.slice(LR_SLICE_SIZE),
-        polledTimes,
-        call,
-        handleResponse
-      );
+      return pollLRAPI(collections.slice(LR_SLICE_SIZE), call, handleResponse);
     }
 
     return Promise.resolve();
@@ -643,43 +651,51 @@ export default (ethProvider, collections = []) => {
    * Updates the collection floors of all the collections for which at least
   one user owns an NFT.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Object} polledTimes - A map of collection => last polled time.
    */
-  const pollLRListings = async (collections, polledTimes) => {
-    const handleResponse = async (collection, listings) => {
+  const pollLRListings = async (collections) => {
+    const handleResponse = async (collection, listings, polledTime) => {
       if (listings.length === 0) {
         return;
       }
 
-      listings.forEach(async (listing) => {
-        const { price, endTime: endsAt, signer, tokenId } = listing;
-        const tokenContract = new ethers.Contract(
-          collection,
-          erc721Abi,
-          ethProvider
-        );
-        const metadataUri = await tokenContract.tokenURI(tokenId).catch(() => {
-          return null;
+      listings
+        .filter(
+          ({ startTime: orderTime }) =>
+            orderTime > polledTime.getTime() / 1000 &&
+            orderTime < new Date().getTime() / 1000
+        )
+        .sort(({ price: price1 }, { price: price2 }) => price1 - price2)
+        .forEach(async (listing) => {
+          const { price, endTime: endsAt, signer, tokenId } = listing;
+          const tokenContract = new ethers.Contract(
+            collection,
+            erc721Abi,
+            ethProvider
+          );
+          const metadataUri = await tokenContract
+            .tokenURI(tokenId)
+            .catch(() => {
+              return null;
+            });
+          emit("listing", {
+            ...listing,
+            price: etherUtils.formatEther(price),
+            seller: signer,
+            endsAt: endsAt * 1000,
+            marketplace: "looksRare",
+            collection: collection.toLowerCase(),
+            metadataUri,
+            network: "eth",
+            standard: "ERC-721",
+          });
         });
-        emit("listing", {
-          ...listing,
-          price: etherUtils.formatEther(price),
-          seller: signer,
-          endsAt: endsAt * 1000,
-          marketplace: "looksRare",
-          collection,
-          metadataUri,
-          network: "eth",
-          standard: "ERC-721",
-        });
-      });
     };
 
     return pollLRAPI(
       collections,
-      polledTimes,
       getCollectionListings,
-      handleResponse
+      handleResponse,
+      "listings"
     );
   };
 
@@ -689,76 +705,71 @@ export default (ethProvider, collections = []) => {
    * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
    * for reference.
    * @param {Array[String]} collections - The collection addresses
-   * @param {Object} polledTimes - A map of collection => last polled time.
    */
-  const pollLRCollectionOffers = (collections, polledTimes) => {
-    const handleResponse = async (collection, offers) => {
+  const pollLRCollectionOffers = (collections) => {
+    const handleResponse = async (collection, offers, polledTime) => {
       if (offers.length === 0) {
         return;
       }
 
-      offers.forEach((offer) => {
-        const { price, endTime: endsAt, signer } = offer;
-        emit("offer", {
-          ...offer,
-          price: etherUtils.formatEther(price),
-          buyer: signer,
-          endsAt: endsAt * 1000,
-          marketplace: "looksRare",
-          collection,
-          network: "eth",
-          standard: "ERC-721",
+      offers
+        .filter(
+          ({ startTime: orderTime }) =>
+            orderTime > polledTime.getTime() / 1000 &&
+            orderTime < new Date().getTime() / 1000
+        )
+        .sort(({ price: price1 }, { price: price2 }) => price2 - price1)
+        .forEach((offer) => {
+          const { price, endTime: endsAt, signer } = offer;
+          emit("offer", {
+            ...offer,
+            price: etherUtils.formatEther(price),
+            buyer: signer,
+            endsAt: endsAt * 1000,
+            marketplace: "looksRare",
+            collection: collection.toLowerCase(),
+            network: "eth",
+            standard: "ERC-721",
+          });
         });
-      });
     };
 
     return pollLRAPI(
       collections,
-      polledTimes,
       getCollectionOffers,
-      handleResponse
+      handleResponse,
+      "offers"
     );
   };
 
   /**
-   * Poll LooksRare off-chain events (listings and offers).
-   * @param {Object} polledTimes - A map of collection => last polled time.
+   * Poll LooksRare off-chain events (listings and offers). When polling
+   * ends, the object will emit a "pollEnded" event.
    */
-  const pollLooksRare = async (polledTimes = new Date()) => {
-    await pollLRCollectionOffers(collectionsToPoll, polledTimes);
-    await sleep(POLL_COLLECTION_SLICE_DELAY);
-    await pollLRListings(collectionsToPoll, polledTimes);
-    await sleep(POLL_COLLECTION_SLICE_DELAY);
-    if (!destroyed) {
-      pollLooksRare(polledTimes);
+  eventEmitter.poll = async (collections) => {
+    if (collections != null) {
+      collectionsToPoll = collections;
     }
+
+    await pollLRListings(collectionsToPoll);
+    await sleep(POLL_COLLECTION_SLICE_DELAY);
+    await pollLRCollectionOffers(collectionsToPoll);
+    eventEmitter.emit("pollEnded");
   };
 
-  // On-chain listeners
-  const contracts = [
-    openSeaEventListener,
-    looksRareEventListener,
-    raribleEventListener,
-    foundationEventListener,
-    x2y2EventListener,
-  ].map((createListener) => createListener());
+  eventEmitter.start = () => {
+    contracts = [
+      openSeaEventListener,
+      looksRareEventListener,
+      raribleEventListener,
+      foundationEventListener,
+      x2y2EventListener,
+    ].map((createListener) => createListener());
+  };
 
-  // Poll new events since five minutes ago initially
-  const polledTimes = collectionsToPoll.reduce((map, collection) => {
-    map[collection] = minutesAgo(5);
-    return map;
-  }, {});
-  // API listeners
-  pollLooksRare(polledTimes);
-
-  eventEmitter.destroy = () => {
-    destroyed = true;
+  eventEmitter.stop = () => {
     contracts.forEach((contract) => contract.removeAllListeners());
     eventEmitter.removeAllListeners();
-  };
-
-  eventEmitter.setCollections = (collections) => {
-    collectionsToPoll = collections;
   };
 
   return eventEmitter;

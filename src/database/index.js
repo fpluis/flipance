@@ -166,6 +166,7 @@ const createTableQueries = [
   `CREATE TABLE IF NOT EXISTS floor_prices (\
     collection VARCHAR(100) NOT NULL,\
     created_at TIMESTAMPTZ NOT NULL,\
+    ends_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
     marketplace TEXT NOT NULL,\
     price DOUBLE PRECISION NOT NULL\
@@ -492,9 +493,10 @@ const toCollectionFloorObject = (collectionFloor) => {
     return null;
   }
 
-  const { created_at: createdAt, ...props } = collectionFloor;
+  const { created_at: createdAt, ends_at: endsAt, ...props } = collectionFloor;
   return {
     ...props,
+    endsAt,
     createdAt,
   };
 };
@@ -1068,6 +1070,30 @@ export const createDbClient = async ({
 
   /**
    *
+   * Get the current collection floor for a collection.
+   * @param {Object} params
+   * @param {String} params.collection - The collection's Ethereum address.
+   * @typedef {("success"|"missing-arguments"|"error")} CollectionFloorResultType - The result of executing the query.
+   * @typedef {Object} CollectionFloorResponse - The responses returned by collection floor database functions.
+   * @property {CollectionFloorResultType} result - The query's result.
+   * @property {CollectionFloor|null} object - The collection floor.
+   * @return {CollectionFloorResponse} response
+   */
+  const getCollectionOffer = async ({ collection } = {}) => {
+    if (collection == null) {
+      return { result: "missing-arguments", object: null };
+    }
+
+    const { rows } = await client.query(
+      `SELECT * FROM offers\
+      WHERE collection = $1 AND token_id = $2`,
+      [collection.toLowerCase(), ""]
+    );
+    return { result: "success", object: toOfferObject(rows[0]) };
+  };
+
+  /**
+   *
    * Create a collection-wide offer.
    * @typedef {Object} OfferResponse - The responses returned by offer database functions.
    * @property {OfferResultType} result - The query's result.
@@ -1075,17 +1101,17 @@ export const createDbClient = async ({
    * @return {OfferResponse} response
    */
   const setCollectionOffer = async ({
-    address,
+    collection,
     price,
     endsAt,
     marketplace = "looksRare",
   } = {}) => {
-    if (address == null || price == null || endsAt == null) {
+    if (collection == null || price == null || endsAt == null) {
       return { result: "missing-arguments", object: null };
     }
 
     const values = [
-      address.toLowerCase(),
+      collection.toLowerCase(),
       price,
       new Date(endsAt),
       new Date(),
@@ -1127,7 +1153,7 @@ export const createDbClient = async ({
       `SELECT * FROM floor_prices\
       WHERE collection = $1\
       ORDER BY created_at DESC`,
-      [collection]
+      [collection.toLowerCase()]
     );
     return { result: "success", object: toCollectionFloorObject(rows[0]) };
   };
@@ -1144,15 +1170,22 @@ export const createDbClient = async ({
   const setCollectionFloor = async ({
     collection,
     price,
+    endsAt,
     marketplace = "looksRare",
   } = {}) => {
-    if (collection == null || price == null) {
+    if (collection == null || price == null || endsAt == null) {
       return { result: "missing-arguments", object: null };
     }
 
     const { rows } = await client.query(
-      `INSERT INTO floor_prices (collection, created_at, price, marketplace) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [collection, new Date(), price, marketplace]
+      `INSERT INTO floor_prices (collection, created_at, price, marketplace, ends_at) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [
+        collection.toLowerCase(),
+        new Date(),
+        price,
+        marketplace,
+        new Date(endsAt),
+      ]
     );
     return {
       result: rows.length > 0 ? "success" : "error",
@@ -1184,6 +1217,7 @@ export const createDbClient = async ({
     setMaxFloorDifference,
     setAllowedEvents,
     setAllowedMarketplaces,
+    getCollectionOffer,
     getAllCollectionOffers,
     setCollectionOffer,
     getCollectionFloor,

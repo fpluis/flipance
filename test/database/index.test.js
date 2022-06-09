@@ -467,15 +467,16 @@ test("setCollectionOffer with a new collection", async () => {
   const now = new Date();
   const tomorrow = now.setDate(now.getDate() + 1);
   const { result } = await dbClient.setCollectionOffer({
-    address: collection1,
+    collection: collection1,
     price: 1,
     endsAt: tomorrow,
     marketplace: "looksRare",
   });
   expect(result).toBe("success");
-  const { objects: offers } = await dbClient.getAllCollectionOffers();
-  expect(offers.length).toBe(1);
-  expect(offers[0]).toMatchObject({
+  const { object: offer } = await dbClient.getCollectionOffer({
+    collection: collection1,
+  });
+  expect(offer).toMatchObject({
     collection: collection1,
     price: 1,
     endsAt: new Date(tomorrow),
@@ -487,7 +488,7 @@ test("setCollectionOffer overwriting an existing collection", async () => {
   const now = new Date();
   const tomorrow = now.setDate(now.getDate() + 1);
   const { result: firstResult } = await dbClient.setCollectionOffer({
-    address: collection1,
+    collection: collection1,
     price: 1,
     endsAt: tomorrow,
     marketplace: "looksRare",
@@ -496,7 +497,7 @@ test("setCollectionOffer overwriting an existing collection", async () => {
   const now2 = new Date();
   const inTwoDates = now2.setDate(now2.getDate() + 2);
   const { result: secondResult } = await dbClient.setCollectionOffer({
-    address: collection1,
+    collection: collection1,
     price: 4,
     endsAt: inTwoDates,
     marketplace: "looksRare",
@@ -913,14 +914,28 @@ test("setCollectionFloor with one argument", async () => {
   expect(collectionFloor).toBe(null);
 });
 
-test("setCollectionFloor with both arguments", async () => {
+test("setCollectionFloor with two argument", async () => {
   const { result, object: collectionFloor } = await dbClient.setCollectionFloor(
-    { collection: collection1, price: 0.5, marketplace: "looksRare" }
+    { collection: collection1, price: 0.5 }
+  );
+  expect(result).toBe("missing-arguments");
+  expect(collectionFloor).toBe(null);
+});
+
+test("setCollectionFloor with all three arguments", async () => {
+  const { result, object: collectionFloor } = await dbClient.setCollectionFloor(
+    {
+      collection: collection1,
+      price: 0.5,
+      endsAt: new Date("2022-10-12"),
+      marketplace: "looksRare",
+    }
   );
   expect(result).toBe("success");
   expect(collectionFloor).toMatchObject({
     collection: collection1,
     price: 0.5,
+    endsAt: new Date("2022-10-12"),
     marketplace: "looksRare",
   });
 });
@@ -943,7 +958,12 @@ test("getCollectionFloor without a matching collection floor", async () => {
 });
 
 test("getCollectionFloor with a matching collection floor", async () => {
-  await dbClient.setCollectionFloor({ collection: collection1, price: 0.5 });
+  const endsAt = new Date();
+  await dbClient.setCollectionFloor({
+    collection: collection1,
+    price: 0.5,
+    endsAt,
+  });
   const { result, object: collectionFloor } = await dbClient.getCollectionFloor(
     {
       collection: collection1,
@@ -953,12 +973,22 @@ test("getCollectionFloor with a matching collection floor", async () => {
   expect(collectionFloor).toMatchObject({
     collection: collection1,
     price: 0.5,
+    endsAt,
   });
 });
 
 test("getCollectionFloor with two collection floors for the same collection", async () => {
-  await dbClient.setCollectionFloor({ collection: collection1, price: 0.5 });
-  await dbClient.setCollectionFloor({ collection: collection1, price: 4.2 });
+  const endsAt = new Date();
+  await dbClient.setCollectionFloor({
+    collection: collection1,
+    price: 0.5,
+    endsAt,
+  });
+  await dbClient.setCollectionFloor({
+    collection: collection1,
+    price: 4.2,
+    endsAt,
+  });
   const { result, object: collectionFloor } = await dbClient.getCollectionFloor(
     {
       collection: collection1,
@@ -968,5 +998,6 @@ test("getCollectionFloor with two collection floors for the same collection", as
   expect(collectionFloor).toMatchObject({
     collection: collection1,
     price: 4.2,
+    endsAt,
   });
 });

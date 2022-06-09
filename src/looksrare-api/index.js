@@ -61,15 +61,9 @@ const callLRWithRetries = (endpoint = "", retries = 1) =>
  * @param signer - The buyer's Ethereum address.
  * @return {Array[LooksRareOffer]} offers - The result of the call.
  */
-export const getCollectionOffers = (collection, startTime) =>
+export const getCollectionOffers = ({ collection, first = 1 }) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&first=150&status[]=VALID&sort=PRICE_DESC`
-  ).then((orders) =>
-    orders.filter(
-      ({ startTime: orderTime }) =>
-        orderTime > startTime.getTime() / 1000 &&
-        orderTime < new Date().getTime() / 1000
-    )
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`
   );
 
 /**
@@ -81,13 +75,39 @@ export const getCollectionOffers = (collection, startTime) =>
  * retrieve the collections.
  * @return {Number} floor - The collection's floor in Ether.
  */
-export const getCollectionListings = (collection, startTime) =>
-  callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&first=150&status[]=VALID&sort=NEWEST`
-  ).then((orders) =>
-    orders.filter(
-      ({ startTime: orderTime }) =>
-        orderTime > startTime.getTime() / 1000 &&
-        orderTime < new Date().getTime() / 1000
-    )
-  );
+export const getCollectionListings = ({
+  collection,
+  maxAge = new Date("1970-01-01"),
+  maxListings = 450,
+  currentListings = 0,
+  first = 150,
+  cursor = null,
+}) => {
+  let endpoint = `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=NEWEST`;
+  if (cursor) {
+    endpoint = `${endpoint}&pagination[cursor]=${cursor}`;
+  }
+
+  return callLRWithRetries(endpoint).then(async (listings) => {
+    const newerListings = listings.filter(
+      ({ startTime }) => new Date(startTime * 1000).getTime() > maxAge
+    );
+    if (
+      newerListings.length === first &&
+      currentListings + listings < maxListings
+    ) {
+      const lastListing = listings[listings.length - 1];
+      const otherListings = await getCollectionListings({
+        collection,
+        maxAge,
+        maxListings,
+        currentListings: currentListings + listings.length,
+        first,
+        cursor: lastListing.hash,
+      });
+      return listings.concat(otherListings);
+    }
+
+    return listings;
+  });
+};
