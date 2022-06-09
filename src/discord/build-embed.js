@@ -1,3 +1,5 @@
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 import { MessageAttachment } from "discord.js";
 import sharp from "sharp";
 import { getCollectionMetadata } from "../blockchain/index.js";
@@ -461,10 +463,13 @@ export default async (args) => {
   const files = [];
 
   let thumbnail;
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = dirname(__filename);
+  const assetFolder = join(__dirname, "/../../assets");
   if (eventType === "acceptOffer" || eventType === "settleAuction") {
-    thumbnail = new MessageAttachment("./assets/weth.png", "weth.png");
+    thumbnail = new MessageAttachment(`${assetFolder}/weth.png`, "weth.png");
   } else {
-    thumbnail = new MessageAttachment("./assets/eth.png", "eth.png");
+    thumbnail = new MessageAttachment(`${assetFolder}/eth.png`, "eth.png");
   }
 
   embed.thumbnail = {

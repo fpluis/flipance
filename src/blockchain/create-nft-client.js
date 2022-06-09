@@ -136,7 +136,12 @@ export default async () => {
     }
   };
 
+  const destroy = () => {
+    return moralisClient.deactivateWeb3();
+  };
+
   return {
     getAddressNFTs,
+    destroy,
   };
 };
