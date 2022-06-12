@@ -17,7 +17,7 @@
   },
   {
     "id": "cancelOrder",
-    "name": "Cancel Listing"
+    "name": "Cancel a listing or offer"
   },
   {
     "id": "createAuction",
