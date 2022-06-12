@@ -30,6 +30,21 @@ const marketplaceIdToMdLink = (marketplace) => {
 
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
+const describePrice = ({ price, floorDifference, collectionFloor }) => {
+  const priceString = `${Number(price).toFixed(3)} ETH`;
+  return collectionFloor == null
+    ? `${priceString}`
+    : floorDifference === 0
+    ? `${priceString} (at the collection's floor price)`
+    : floorDifference < 0
+    ? `${priceString} - ${Number(
+        (Math.abs(floorDifference) * 100).toFixed(4)
+      )}% below the floor price (${collectionFloor} ETH)`
+    : `${priceString} - ${Number(
+        (floorDifference * 100).toFixed(4)
+      )}% above the floor price (${collectionFloor} ETH)`;
+};
+
 /**
  * Create the embed descriptions for a new offer event.
  * @param {Number} price - The price in Ether.
@@ -43,7 +58,7 @@ const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
  * from the collection's metadata.
  * @param {String} collectionMetadata - The collection's metadata.
  * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @typedef {Object} EmbedDescription
  * @property {String} title - The embed's title (link at the top of the embed).
  * @property {String} url - The title's url.
@@ -51,28 +66,14 @@ const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
  * @return EmbedDescription
  */
 const describeOffer = ({
-  price: priceEth,
-  collectionFloor,
   tokenId,
   tokenIds = [],
   target,
   collectionUrl,
   collectionMetadata,
-  priceString,
+  priceDescription,
 }) => {
   let description;
-  const priceDescription =
-    collectionFloor == null
-      ? `${priceString}`
-      : collectionFloor === priceEth
-      ? `${priceString} (at the collection's floor price)`
-      : collectionFloor < priceEth
-      ? `${priceString} (${Number(
-          (100 * (priceEth - collectionFloor)) / priceEth
-        ).toFixed(2)}% over the floor price)`
-      : `${priceString} (${Number(
-          (100 * (collectionFloor - priceEth)) / collectionFloor
-        ).toFixed(2)}% below the floor price)`;
   if (target === "user") {
     const firstSentence =
       collectionMetadata.name && collectionMetadata.name.length > 0
@@ -99,22 +100,18 @@ const describeOffer = ({
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeAcceptOffer = ({
-  isBuyer,
-  isSeller,
-  transactionHash,
-  priceString,
-  marketplace,
-}) => {
+const describeAcceptOffer = (args) => {
+  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
+    args;
   const description = isBuyer
-    ? `You accepted an offer on ${marketplace} for ${priceString}`
+    ? `You accepted an offer on ${marketplace} for ${priceDescription}`
     : isSeller
-    ? `Your offer was accepted on ${marketplace} for ${priceString}`
-    : `Offer accepted on ${marketplace} for ${priceString}`;
+    ? `Your offer was accepted on ${marketplace} for ${priceDescription}`
+    : `Offer accepted on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Sale!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -127,22 +124,18 @@ const describeAcceptOffer = ({
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeAcceptAsk = ({
-  isBuyer,
-  isSeller,
-  transactionHash,
-  priceString,
-  marketplace,
-}) => {
+const describeAcceptAsk = (args) => {
+  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
+    args;
   const description = isBuyer
-    ? `You bought an NFT on ${marketplace} for ${priceString}`
+    ? `You bought an NFT on ${marketplace} for ${priceDescription}`
     : isSeller
-    ? `You sold your NFT on ${marketplace} for ${priceString}`
-    : `NFT bought directly on ${marketplace} for ${priceString}`;
+    ? `You sold your NFT on ${marketplace} for ${priceDescription}`
+    : `NFT bought directly on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Sale!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -154,19 +147,15 @@ const describeAcceptAsk = ({
  * Create the embed description for a createAuction event.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeCreateAuction = ({
-  isSeller,
-  transactionHash,
-  priceString,
-  marketplace,
-}) => {
+const describeCreateAuction = (args) => {
+  const { isSeller, transactionHash, marketplace, priceDescription } = args;
   const description = isSeller
-    ? `You created an auction on ${marketplace} with reserve price ${priceString}`
-    : `Auction created on ${marketplace} with reserve price ${priceString}`;
+    ? `You created an auction on ${marketplace} with reserve price ${priceDescription}`
+    : `Auction created on ${marketplace} with reserve price ${priceDescription}`;
   return {
     title: "New Sale!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -179,22 +168,18 @@ const describeCreateAuction = ({
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeSettleAuction = ({
-  isBuyer,
-  isSeller,
-  transactionHash,
-  priceString,
-  marketplace,
-}) => {
+const describeSettleAuction = (args) => {
+  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
+    args;
   const description = isBuyer
-    ? `You won an auction on ${marketplace} for ${priceString}`
+    ? `You won an auction on ${marketplace} for ${priceDescription}`
     : isSeller
-    ? `You sold an item in auction on ${marketplace} for ${priceString}`
-    : `Auction won on ${marketplace} for ${priceString}`;
+    ? `You sold an item in auction on ${marketplace} for ${priceDescription}`
+    : `Auction won on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Sale!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -206,19 +191,15 @@ const describeSettleAuction = ({
  * Create the embed description for an auctionBid event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeAuctionBid = ({
-  isBuyer,
-  transactionHash,
-  priceString,
-  marketplace,
-}) => {
+const describeAuctionBid = (args) => {
+  const { isBuyer, transactionHash, marketplace, priceDescription } = args;
   const description = isBuyer
-    ? `You placed a ${priceString} bid on an auction in ${marketplace}`
-    : `New ${priceString} bid on an auction in ${marketplace}`;
+    ? `You placed a ${priceDescription} bid on an auction in ${marketplace}`
+    : `New ${priceDescription} bid on an auction in ${marketplace}`;
   return {
     title: "New Auction Bid!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -229,7 +210,7 @@ const describeAuctionBid = ({
 /**
  * Create the embed description for a listing event.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @param {String} marketplaceId - One of the marketplace ids defined in
  * data/marketplaces.json
@@ -237,17 +218,18 @@ const describeAuctionBid = ({
  * @param {String} tokenId - The token's id
  * @return EmbedDescription
  */
-const describeListing = ({
-  isSeller,
-  priceString,
-  marketplace,
-  marketplaceId,
-  collection,
-  tokenId,
-}) => {
+const describeListing = (args) => {
+  const {
+    isSeller,
+    marketplace,
+    marketplaceId,
+    priceDescription,
+    collection,
+    tokenId,
+  } = args;
   const description = isSeller
-    ? `You listed an item in ${marketplace} for ${priceString}`
-    : `New listing on ${marketplace} for ${priceString}`;
+    ? `You listed an item in ${marketplace} for ${priceDescription}`
+    : `New listing on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Listing!",
     description,
@@ -273,7 +255,7 @@ const describeListing = ({
  * from the collection's metadata.
  * @param {String} collectionMetadata - The collection's metadata.
  * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceString - The price description in Ether.
+ * @param {String} priceDescription - The price description in Ether.
  * @typedef {Object} EmbedDescription
  * @property {String} title - The embed's title (link at the top of the embed).
  * @property {String} url - The title's url.
@@ -281,8 +263,9 @@ const describeListing = ({
  * @return EmbedDescription
  */
 const describeEvent = (args) => {
-  const { eventType, price: priceEth } = args;
-  args.priceString = `${Number(priceEth).toFixed(3)} ETH`;
+  const { eventType } = args;
+  args.priceDescription = describePrice(args);
+  console.log(`Describing event ${JSON.stringify(args)}`);
   switch (eventType) {
     case "offer":
       return describeOffer(args);
