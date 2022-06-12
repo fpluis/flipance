@@ -18,6 +18,8 @@ const allEventIds = nftEvents.map(({ id }) => id);
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
+const MAX_MINUTE_DIFFERENCE = 2;
+
 const argv = minimist(process.argv.slice(2));
 
 const {
@@ -25,6 +27,9 @@ const {
   DISCORD_BOT_TOKEN_TEST,
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
+
+const datesMinuteDifference = (date) =>
+  Math.floor((new Date() - new Date(date)) / 1000) / 60;
 
 /**
  * Determine whether a user/server should be notified of an NFT event
@@ -46,7 +51,7 @@ const {
  * @return {Boolean}
  */
 const isAllowedByPreferences = (
-  { marketplace, eventType, floorDifference, seller },
+  { marketplace, eventType, floorDifference, seller, startsAt },
   {
     allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
@@ -56,6 +61,7 @@ const isAllowedByPreferences = (
   } = {}
 ) => {
   if (
+    datesMinuteDifference(startsAt) > MAX_MINUTE_DIFFERENCE ||
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType)
   ) {

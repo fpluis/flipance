@@ -76,7 +76,7 @@ export default (ethProvider, collections = []) => {
    */
   const getTimestamp = async (blockNumber) => {
     if (blockNumber == null) {
-      return new Date().getTime();
+      return new Date().getTime() / 1000;
     }
 
     if (blockCache[blockNumber] != null) {
@@ -95,7 +95,7 @@ export default (ethProvider, collections = []) => {
         return timestamp;
       })
       .catch(() => {
-        return new Date().getTime();
+        return new Date().getTime() / 1000;
       });
   };
 
@@ -323,9 +323,9 @@ export default (ethProvider, collections = []) => {
 
     const { from, logs = [], gasUsed, blockNumber } = transactionReceipt;
     const timestamp = await getTimestamp(blockNumber).catch(() => {
-      return new Date().getTime();
+      return new Date().getTime() / 1000;
     });
-    const props = { startsAt: new Date(timestamp), initiator: from };
+    const props = { startsAt: new Date(timestamp * 1000), initiator: from };
     if (eventType === "cancelOrder") {
       return props;
     }
