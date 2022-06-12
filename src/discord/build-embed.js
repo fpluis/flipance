@@ -7,6 +7,8 @@ import logMessage from "../log-message.js";
 import getMetadata from "../get-metadata.js";
 import resolveURI from "../resolve-uri.js";
 
+const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
+
 /* Turns a long hex string like "0x123456789123456" into "0x12...3456" */
 const makeAddressReadable = (address) =>
   `${address.slice(0, 4)}...${address.slice(address.length - 4)}`;
@@ -35,12 +37,12 @@ const describePrice = ({ price, floorDifference, collectionFloor }) => {
   return collectionFloor == null
     ? `${priceString}`
     : floorDifference === 0
-    ? `${priceString} (at the collection's floor price)`
+    ? `${priceString}, at the collection's floor price.`
     : floorDifference < 0
-    ? `${priceString} - ${Number(
+    ? `${priceString}, ${Number(
         (Math.abs(floorDifference) * 100).toFixed(4)
       )}% below the floor price (${collectionFloor} ETH)`
-    : `${priceString} - ${Number(
+    : `${priceString}, ${Number(
         (floorDifference * 100).toFixed(4)
       )}% above the floor price (${collectionFloor} ETH)`;
 };
@@ -119,6 +121,9 @@ const describeAcceptOffer = (args) => {
   };
 };
 
+const describeIntermediary = (intermediary) =>
+  intermediary === gemV2Address ? "Gem.xyz" : "";
+
 /**
  * Create the embed description for an acceptAsk event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
@@ -129,13 +134,22 @@ const describeAcceptOffer = (args) => {
  * @return EmbedDescription
  */
 const describeAcceptAsk = (args) => {
-  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
-    args;
+  const {
+    isBuyer,
+    isSeller,
+    transactionHash,
+    marketplace,
+    priceDescription,
+    intermediary,
+  } = args;
+  const intermediaryString = intermediary
+    ? ` through ${describeIntermediary(intermediary)}`
+    : "";
   const description = isBuyer
-    ? `You bought an NFT on ${marketplace} for ${priceDescription}`
+    ? `You bought an NFT on ${marketplace} for ${priceDescription}${intermediaryString}`
     : isSeller
-    ? `You sold your NFT on ${marketplace} for ${priceDescription}`
-    : `NFT bought directly on ${marketplace} for ${priceDescription}`;
+    ? `You sold your NFT on ${marketplace} for ${priceDescription}${intermediaryString}`
+    : `NFT bought on ${marketplace} for ${priceDescription}${intermediaryString}`;
   return {
     title: "New Sale!",
     url: `https://etherscan.io/tx/${transactionHash}`,
@@ -265,7 +279,6 @@ const describeListing = (args) => {
 const describeEvent = (args) => {
   const { eventType } = args;
   args.priceDescription = describePrice(args);
-  console.log(`Describing event ${JSON.stringify(args)}`);
   switch (eventType) {
     case "offer":
       return describeOffer(args);
