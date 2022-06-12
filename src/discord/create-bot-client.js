@@ -18,7 +18,7 @@ const allEventIds = nftEvents.map(({ id }) => id);
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
-const MAX_MINUTE_DIFFERENCE = 2;
+const MAX_MINUTE_DIFFERENCE = 3.5;
 
 const argv = minimist(process.argv.slice(2));
 
@@ -122,6 +122,15 @@ export default ({ dbClient, shardId, totalShards }) =>
           const embed = await buildEmbed({
             ...event,
             target: isUserMessage ? "user" : "server",
+          }).catch((error) => {
+            logMessage(
+              `Error building embed with args ${JSON.stringify({
+                ...event,
+                target: isUserMessage ? "user" : "server",
+              })}`,
+              "error",
+              error
+            );
           });
           try {
             const target = await (isUserMessage

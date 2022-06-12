@@ -242,7 +242,13 @@ export default (ethProvider, collections = []) => {
       topics[0] === etherUtils.id("Transfer(address,address,uint256)") &&
       topics.length === 4
     ) {
-      const ercLog = await parseERC721Log(transferLog);
+      const ercLog = await parseERC721Log(transferLog).catch((error) => {
+        logMessage(
+          `Error parsing ERC-721 log ${JSON.stringify(transferLog)}`,
+          "error",
+          error
+        );
+      });
       if (ercLog.to === gemV2Address) {
         const secondTransfer = logs.slice(indexInLogs + 1).find((log) => {
           const { topics, address: collectionAddress } = log;
@@ -275,7 +281,13 @@ export default (ethProvider, collections = []) => {
       topics[0] ===
       etherUtils.id("TransferSingle(address,address,address,uint256,uint256)")
     ) {
-      return parseERC1155Log(transferLog);
+      return parseERC1155Log(transferLog).catch((error) => {
+        logMessage(
+          `Error parsing ERC-1155 log ${JSON.stringify(transferLog)}`,
+          "error",
+          error
+        );
+      });
     }
 
     return null;
@@ -338,7 +350,21 @@ export default (ethProvider, collections = []) => {
       );
       // Traverse the tx's logs backwards to find the transfer log
       while (indexInLogs >= 0) {
-        const parsedTransferLog = await parseTransferLog(logs, indexInLogs);
+        const parsedTransferLog = await parseTransferLog(
+          logs,
+          indexInLogs
+          // eslint-disable-next-line no-loop-func
+        ).catch((error) => {
+          logMessage(
+            `Error parsing transfer log ${JSON.stringify({
+              logs,
+              indexInLogs,
+            })}`,
+            "error",
+            error
+          );
+          return null;
+        });
         if (parsedTransferLog != null) {
           return {
             ...props,
@@ -351,10 +377,7 @@ export default (ethProvider, collections = []) => {
 
       return props;
     } catch (error) {
-      logMessage(
-        `Error getting the token info: ${error.toString()}`,
-        "warning"
-      );
+      logMessage(`Error getting the token info`, "warning", error);
     }
 
     logMessage(
@@ -692,11 +715,15 @@ export default (ethProvider, collections = []) => {
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
         const { [queryType]: maxAge = minutesAgo(2) } = collectionTimes;
-        return call({ collection, maxAge }).then((response) => {
-          handleResponse(collection, response, maxAge);
-          collectionTimes[queryType] = new Date();
-          polledTimes[collection] = collectionTimes;
-        });
+        return call({ collection, maxAge })
+          .then((response) => {
+            handleResponse(collection, response, maxAge);
+            collectionTimes[queryType] = new Date();
+            polledTimes[collection] = collectionTimes;
+          })
+          .catch((error) => {
+            logMessage(`Error polling LR API`, "error", error);
+          });
       })
     );
     const otherCollections = collections.slice(LR_SLICE_SIZE);

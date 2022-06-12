@@ -33,7 +33,11 @@ export default function logMessage(message, level, error) {
   const stream = loggingStreams[level] || loggingStreams.other;
   stream.write(
     `${new Date().toISOString()}: ${message}${
-      error ? `Stack trace: ${error.stack}` : ""
+      error && error.stack
+        ? `Stack trace: ${error.stack}`
+        : error
+        ? JSON.stringify(error)
+        : ""
     }\n`
   );
 }
