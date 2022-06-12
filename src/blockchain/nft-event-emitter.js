@@ -10,7 +10,7 @@ import {
 } from "../looksrare-api/index.js";
 // eslint-disable-next-line no-unused-vars
 import { ethers, providers, utils as etherUtils } from "ethers";
-import logError from "../log-error.js";
+import logMessage from "../log-message.js";
 import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
@@ -149,8 +149,11 @@ export default (ethProvider, collections = []) => {
     const { address: collection, topics } = transferLog;
     const [, from, to, tokenIdHex] = topics;
     if (tokenIdHex == null) {
-      logError(
-        `Null token id from ERC-721 transfer log ${JSON.stringify(transferLog)}`
+      logMessage(
+        `Null token id from ERC-721 transfer log ${JSON.stringify(
+          transferLog
+        )}`,
+        "debug"
       );
     }
 
@@ -305,15 +308,16 @@ export default (ethProvider, collections = []) => {
     const transactionReceipt = await event
       .getTransactionReceipt()
       .catch((error) => {
-        logError(
+        logMessage(
           `Error getting tx receipt of event ${JSON.stringify(
             event
-          )}: ${error.toString()}`
+          )}: ${error.toString()}`,
+          "warning"
         );
         return {};
       });
     if (transactionReceipt == null) {
-      logError(`Null tx receipt at ${event.transactionHash}`);
+      logMessage(`Null tx receipt at ${event.transactionHash}`, "warning");
       return {};
     }
 
@@ -346,10 +350,16 @@ export default (ethProvider, collections = []) => {
 
       return props;
     } catch (error) {
-      logError(`Error getting the token info: ${error.toString()}`);
+      logMessage(
+        `Error getting the token info: ${error.toString()}`,
+        "warning"
+      );
     }
 
-    logError(`Unknown token format: ${JSON.stringify(transactionReceipt)}`);
+    logMessage(
+      `Unknown token format: ${JSON.stringify(transactionReceipt)}`,
+      "debug"
+    );
     return props;
   };
 

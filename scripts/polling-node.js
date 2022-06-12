@@ -13,7 +13,7 @@ import {
   nftEventEmitter as createNFTEventEmitter,
   createNFTClient,
 } from "../src/blockchain/index.js";
-import logError from "../src/log-error.js";
+import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
 import { getDefaultProvider } from "ethers";
 
@@ -215,12 +215,12 @@ start();
 
 process.on("unhandledRejection", (error) => {
   console.log(error);
-  logError(`Unhandled promise rejection: ${error.toString()}`);
+  logMessage(`Unhandled promise rejection: ${error.toString()}`, "error");
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
   console.log(error);
-  logError(`Uncaught exception: ${error.toString()}`);
+  logMessage(`Uncaught exception: ${error.toString()}`, "error");
   process.exit(-1);
 });

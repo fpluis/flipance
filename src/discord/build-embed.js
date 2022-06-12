@@ -3,7 +3,7 @@ import { fileURLToPath } from "url";
 import { MessageAttachment } from "discord.js";
 import sharp from "sharp";
 import { getCollectionMetadata } from "../blockchain/index.js";
-import logError from "../log-error.js";
+import logMessage from "../log-message.js";
 import getMetadata from "../get-metadata.js";
 import resolveURI from "../resolve-uri.js";
 
@@ -358,8 +358,9 @@ export default async (args) => {
       : originalTokenId;
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
-        logError(
-          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}. Error: ${error.toString()}`
+        logMessage(
+          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}. Error: ${error.toString()}`,
+          "warning"
         );
         return {};
       })
@@ -492,10 +493,11 @@ export default async (args) => {
           .png()
           .toBuffer()
           .catch((error) => {
-            logError(
+            logMessage(
               `Error generating preview image with sharp: ${JSON.stringify(
                 error
-              )}`
+              )}`,
+              "warning"
             );
             return { embeds: [], files };
           });

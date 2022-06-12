@@ -7,7 +7,7 @@ import path from "path";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import moralisClient from "moralis/node.js";
-import logError from "../log-error.js";
+import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -40,7 +40,7 @@ const getNFTScanToken = async () => {
     .then((res) => res.json())
     .then(async (response) => {
       if (response == null || response.data == null) {
-        logError(`Empty NFTScan getToken response: ${response}`);
+        logMessage(`Empty NFTScan getToken response: ${response}`, "warning");
         return null;
       }
 
@@ -54,7 +54,10 @@ const getNFTScanToken = async () => {
       return accessToken;
     })
     .catch((error) => {
-      logError(`Error fetching NFTScan access token: ${error.toString()}`);
+      logMessage(
+        `Error fetching NFTScan access token: ${error.toString()}`,
+        "warning"
+      );
       return null;
     });
 };
@@ -82,7 +85,7 @@ const getNFTScanNFTs = async (address) => {
     .then((res) => res.json())
     .then((response) => {
       if (response == null || response.data == null) {
-        logError(`Empty NFTScan getNFTs response: ${response}`);
+        logMessage(`Empty NFTScan getNFTs response: ${response}`, "warning");
         return [];
       }
 
@@ -95,7 +98,10 @@ const getNFTScanNFTs = async (address) => {
       );
     })
     .catch((error) => {
-      logError(`Error fetching NFTs from NFTScan: ${error.toString()}`);
+      logMessage(
+        `Error fetching NFTs from NFTScan: ${error.toString()}`,
+        "warning"
+      );
       return [];
     });
 };
@@ -129,8 +135,9 @@ export default async () => {
         })
         .catch(() => getNFTScanNFTs(address));
     } catch (error) {
-      logError(
-        `Error fetching NFTs for address ${address}: ${error.toString()}`
+      logMessage(
+        `Error fetching NFTs for address ${address}: ${error.toString()}`,
+        "warning"
       );
       return [];
     }

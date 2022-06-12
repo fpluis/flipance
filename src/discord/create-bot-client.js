@@ -2,7 +2,7 @@ import path from "path";
 import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
 import { handleInteraction, registerCommands, buildEmbed } from "./index.js";
-import logError from "../log-error.js";
+import logMessage from "../log-message.js";
 import { readFileSync } from "fs";
 import minimist from "minimist";
 
@@ -122,15 +122,17 @@ export default ({ dbClient, shardId, totalShards }) =>
               ? discordClient.users.fetch(discordId)
               : discordClient.channels.fetch(channelId));
             target.send(embed).catch((error) => {
-              logError(
-                `Error sending listing notification to ${channelId}/${discordId}; Error: ${error.toString()}`
+              logMessage(
+                `Error sending listing notification to ${channelId}/${discordId}; Error: ${error.toString()}`,
+                "error"
               );
             });
           } catch (error) {
-            logError(
+            logMessage(
               `Error handling listing with args ${JSON.stringify({
                 ...event,
-              })}: ${error.toString()}`
+              })}: ${error.toString()}`,
+              "error"
             );
           }
         }
@@ -146,12 +148,12 @@ export default ({ dbClient, shardId, totalShards }) =>
       });
 
       discordClient.on("error", (error) => {
-        logError(`Discord client error: ${error.toString()}`);
+        logMessage(`Discord client error: ${error.toString()}`, "error");
         reject(error);
       });
 
       discordClient.on("shardError", (error) => {
-        logError(`Discord client shard error: ${error.toString()}`);
+        logMessage(`Discord client shard error: ${error.toString()}`, "error");
         reject(error);
       });
 
@@ -159,10 +161,11 @@ export default ({ dbClient, shardId, totalShards }) =>
         try {
           handleNFTEvent(event);
         } catch (error) {
-          logError(
+          logMessage(
             `Error handling NFT event ${JSON.stringify(
               event
-            )}: ${error.toString()}`
+            )}: ${error.toString()}`,
+            "error"
           );
           reject(error);
         }

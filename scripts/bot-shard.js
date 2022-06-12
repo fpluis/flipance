@@ -6,7 +6,7 @@ listens to blockchain events.
 
 import path from "path";
 import dotenv from "dotenv";
-import logError from "../src/log-error.js";
+import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
 import createBotClient from "../src/discord/create-bot-client.js";
 import sleep from "../src/sleep.js";
@@ -90,10 +90,12 @@ start();
 
 process.on("unhandledRejection", (error) => {
   console.log(error);
-  logError(`Unhandled promise rejection: ${error.toString()}`);
+  logMessage(`Unhandled promise rejection: ${error.toString()}`, "error");
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
   console.log(error);
+  logMessage(`Uncaught exception: ${error.toString()}`, "error");
+  process.exit(-1);
 });

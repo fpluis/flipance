@@ -19,7 +19,7 @@ import {
   CommandInteraction,
 } from "discord.js";
 import { bold } from "@discordjs/builders";
-import logError from "../log-error.js";
+import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -893,7 +893,7 @@ export default async (clients, interaction) => {
     try {
       return await handleCommand(args);
     } catch (error) {
-      logError(`Error handling user command: ${error.toString()}`);
+      logMessage(`Error handling user command: ${error.toString()}`, "error");
       return Promise.resolve();
     }
   }
@@ -902,7 +902,7 @@ export default async (clients, interaction) => {
     try {
       return await handleSelectMenu(args);
     } catch (error) {
-      logError(`Error handling select menu: ${error.toString()}`);
+      logMessage(`Error handling select menu: ${error.toString()}`, "error");
       return Promise.resolve();
     }
   }

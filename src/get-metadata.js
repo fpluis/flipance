@@ -5,7 +5,7 @@
 
 import fetch from "node-fetch";
 import resolveURI from "./resolve-uri.js";
-import logError from "./log-error.js";
+import logMessage from "./log-message.js";
 
 export default async (metadataURI = "", tokenId = "") => {
   if (metadataURI.startsWith(`data:application/json;base64,`)) {
@@ -19,7 +19,10 @@ export default async (metadataURI = "", tokenId = "") => {
         return parsed;
       }
     } catch (error) {
-      logError(`Error parsing binary as JSON: ${JSON.stringify(error)}`);
+      logMessage(
+        `Error parsing binary as JSON: ${JSON.stringify(error)}`,
+        "warning"
+      );
       return {};
     }
   }
@@ -42,7 +45,7 @@ export default async (metadataURI = "", tokenId = "") => {
         metadata = await response.json();
       } catch (error) {
         const text = await response.text();
-        logError(`Plain-text isn't JSON; plain-text: ${text}`);
+        logMessage(`Plain-text metadata URL is not JSON: ${text}`, "warning");
       }
 
       return metadata;
