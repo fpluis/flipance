@@ -257,12 +257,12 @@ start();
 
 process.on("unhandledRejection", (error) => {
   console.log(error);
-  logMessage(`Unhandled promise rejection: ${error.toString()}`, "error");
+  logMessage(`Unhandled promise rejection`, "error", error);
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
   console.log(error);
-  logMessage(`Uncaught exception: ${error.toString()}`, "error");
+  logMessage(`Uncaught exception`, "error", error);
   process.exit(-1);
 });

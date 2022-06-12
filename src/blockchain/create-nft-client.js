@@ -54,10 +54,7 @@ const getNFTScanToken = async () => {
       return accessToken;
     })
     .catch((error) => {
-      logMessage(
-        `Error fetching NFTScan access token: ${error.toString()}`,
-        "warning"
-      );
+      logMessage(`Error fetching NFTScan access token`, "warning", error);
       return null;
     });
 };
@@ -98,10 +95,7 @@ const getNFTScanNFTs = async (address) => {
       );
     })
     .catch((error) => {
-      logMessage(
-        `Error fetching NFTs from NFTScan: ${error.toString()}`,
-        "warning"
-      );
+      logMessage(`Error fetching NFTs from NFTScan`, "warning", error);
       return [];
     });
 };
@@ -136,8 +130,9 @@ export default async () => {
         .catch(() => getNFTScanNFTs(address));
     } catch (error) {
       logMessage(
-        `Error fetching NFTs for address ${address}: ${error.toString()}`,
-        "warning"
+        `Error fetching NFTs for address ${address}`,
+        "warning",
+        error
       );
       return [];
     }

@@ -355,8 +355,9 @@ export default async (args) => {
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
         logMessage(
-          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}. Error: ${error.toString()}`,
-          "warning"
+          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}.`,
+          "warning",
+          error
         );
         return {};
       })

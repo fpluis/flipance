@@ -45,7 +45,6 @@ const pollNFTEvents = async ({
     createdAt: lastPollTime,
   });
   const newPollTime = new Date();
-  console.log(`New events: ${JSON.stringify(nftEvents)}`);
   const myEvents = nftEvents.reduce((events, { watchers, ...event }) => {
     const myWatchers = watchers.filter(({ discordId }) => {
       // eslint-disable-next-line no-bitwise
@@ -57,9 +56,6 @@ const pollNFTEvents = async ({
 
     return events;
   }, []);
-  console.log(
-    `I'm handling ${myEvents.length} events out of ${nftEvents.length} total events`
-  );
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
   });
@@ -104,12 +100,12 @@ start();
 
 process.on("unhandledRejection", (error) => {
   console.log(error);
-  logMessage(`Unhandled promise rejection: ${error.toString()}`, "error");
+  logMessage(`Unhandled promise rejection`, "error", error);
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
   console.log(error);
-  logMessage(`Uncaught exception: ${error.toString()}`, "error");
+  logMessage(`Uncaught exception`, "error", error);
   process.exit(-1);
 });

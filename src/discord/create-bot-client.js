@@ -138,16 +138,18 @@ export default ({ dbClient, shardId, totalShards }) =>
               : discordClient.channels.fetch(channelId));
             target.send(embed).catch((error) => {
               logMessage(
-                `Error sending listing notification to ${channelId}/${discordId}; Error: ${error.toString()}`,
-                "error"
+                `Error sending listing notification to ${channelId}/${discordId}`,
+                "error",
+                error
               );
             });
           } catch (error) {
             logMessage(
               `Error handling listing with args ${JSON.stringify({
                 ...event,
-              })}: ${error.toString()}`,
-              "error"
+              })}`,
+              "error",
+              error
             );
           }
         }
@@ -163,12 +165,12 @@ export default ({ dbClient, shardId, totalShards }) =>
       });
 
       discordClient.on("error", (error) => {
-        logMessage(`Discord client error: ${error.toString()}`, "error");
+        logMessage(`Discord client error`, "error", error);
         reject(error);
       });
 
       discordClient.on("shardError", (error) => {
-        logMessage(`Discord client shard error: ${error.toString()}`, "error");
+        logMessage(`Discord client shard error`, "error", error);
         reject(error);
       });
 
@@ -177,10 +179,9 @@ export default ({ dbClient, shardId, totalShards }) =>
           handleNFTEvent(event);
         } catch (error) {
           logMessage(
-            `Error handling NFT event ${JSON.stringify(
-              event
-            )}: ${error.toString()}`,
-            "error"
+            `Error handling NFT event ${JSON.stringify(event)}`,
+            "error",
+            error
           );
           reject(error);
         }

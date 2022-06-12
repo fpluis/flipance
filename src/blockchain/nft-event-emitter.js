@@ -322,10 +322,9 @@ export default (ethProvider, collections = []) => {
       .getTransactionReceipt()
       .catch((error) => {
         logMessage(
-          `Error getting tx receipt of event ${JSON.stringify(
-            event
-          )}: ${error.toString()}`,
-          "warning"
+          `Error getting tx receipt of event ${JSON.stringify(event)}`,
+          "warning",
+          error
         );
         return {};
       });
