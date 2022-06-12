@@ -23,13 +23,20 @@ import logError from "../log-error.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const { MAX_NICKNAME_LENGTH = 50 } = process.env;
+const { MAX_NICKNAME_LENGTH = 50, MARKETPLACES } = process.env;
 
-const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
+const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
-const allMarketplaceIds = marketplaces.map(({ id }) => id);
+const allMarketplaceIds = allMarketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
+
+const allowedMarketplaceIds =
+  MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
+console.log(`Allowed marketplace ids ${JSON.stringify(allowedMarketplaceIds)}`);
+const marketplaces = allMarketplaces.filter(({ id }) =>
+  allowedMarketplaceIds.includes(id)
+);
 
 /* Check the address is a valid Ethereum address */
 const isValidAddress = (address) => {
@@ -509,7 +516,7 @@ const handleSetAllowedMarketplaces = async ({ dbClient, interaction }) => {
   });
   const { object: settings } = await getSettings(dbClient, interaction);
   const { allowedMarketplaces } = settings || {
-    allowedMarketplaces: allMarketplaceIds,
+    allowedMarketplaces: allowedMarketplaceIds,
   };
   const alert = interaction.options.getString("alert");
   const customId = `allowedmarketplaces/${alert}`;

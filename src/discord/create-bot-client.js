@@ -1,14 +1,22 @@
+import path from "path";
+import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
 import { handleInteraction, registerCommands, buildEmbed } from "./index.js";
 import logError from "../log-error.js";
 import { readFileSync } from "fs";
 import minimist from "minimist";
 
+dotenv.config({ path: path.resolve(".env") });
+const { MARKETPLACES } = process.env;
+
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
+
+const allowedMarketplaceIds =
+  MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
 const argv = minimist(process.argv.slice(2));
 
@@ -38,11 +46,13 @@ const {
  * @return {Boolean}
  */
 const isAllowedByPreferences = (
-  { marketplace, eventType, floorDifference },
+  { marketplace, eventType, floorDifference, seller },
   {
-    allowedMarketplaces = allMarketplaceIds,
+    allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
     maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
+    address,
+    type: alertType,
   } = {}
 ) => {
   if (
@@ -58,6 +68,15 @@ const isAllowedByPreferences = (
     }
 
     return 100 * floorDifference < Number(maxOfferFloorDifference);
+  }
+
+  // Don't notify wallets of listings when they are not the sellers
+  if (
+    eventType === "listing" &&
+    !(address === seller || alertType === "collection")
+  ) {
+    console.log(`Non-event detected`);
+    return false;
   }
 
   return true;

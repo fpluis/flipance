@@ -15,10 +15,13 @@ import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
+const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
 const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
 const erc1155Abi = JSON.parse(readFileSync("data/erc1155Abi.json"));
 const townStarAbi = JSON.parse(readFileSync("data/townStarAbi.json"));
+
+const allMarketplaceIds = allMarketplaces.map(({ id }) => id);
 
 const openSeaSSAddress = "0x495f947276749ce646f68ac8c248420045cb7b5e";
 const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
@@ -28,8 +31,12 @@ const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 
-const daysAgo = (days = 30) =>
-  new Date(new Date().setDate(new Date().getDate() - days));
+const hoursAgo = (hours = 2) =>
+  new Date(new Date().setHours(new Date().getHours() - hours));
+
+const { MARKETPLACES } = process.env;
+const ALLOWED_MARKETPLACE_IDS =
+  MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
 /**
  * Create an EventEmitter that listens to transactions on the main
@@ -44,8 +51,8 @@ export default (ethProvider, collections = []) => {
   let contracts;
   const polledTimes = collections.reduce((map, collection) => {
     map[collection.toLowerCase()] = {
-      listings: daysAgo(1),
-      offers: daysAgo(1),
+      listings: hoursAgo(2),
+      offers: hoursAgo(2),
     };
 
     return map;
@@ -673,7 +680,7 @@ export default (ethProvider, collections = []) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
-        const { [queryType]: maxAge = daysAgo(1) } = collectionTimes;
+        const { [queryType]: maxAge = hoursAgo(2) } = collectionTimes;
         return call({ collection, maxAge }).then((response) => {
           handleResponse(collection, response, maxAge);
           collectionTimes[queryType] = new Date();
@@ -684,7 +691,7 @@ export default (ethProvider, collections = []) => {
     const otherCollections = collections.slice(LR_SLICE_SIZE);
     if (otherCollections.length > 0) {
       await sleep(POLL_COLLECTION_SLICE_DELAY);
-      return pollLRAPI(collections.slice(LR_SLICE_SIZE), call, handleResponse);
+      return pollLRAPI(otherCollections, call, handleResponse);
     }
 
     return Promise.resolve();
@@ -790,20 +797,29 @@ export default (ethProvider, collections = []) => {
       collectionsToPoll = collections;
     }
 
-    await pollLRListings(collectionsToPoll);
-    await sleep(POLL_COLLECTION_SLICE_DELAY);
-    await pollLRCollectionOffers(collectionsToPoll);
+    console.log(`Polling collections ${JSON.stringify(collectionsToPoll)}`);
+    if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
+      console.log(`Polling LR`);
+      await pollLRListings(collectionsToPoll);
+      await sleep(POLL_COLLECTION_SLICE_DELAY);
+      await pollLRCollectionOffers(collectionsToPoll);
+    } else {
+      await sleep(POLL_COLLECTION_SLICE_DELAY * 3);
+    }
+
     eventEmitter.emit("pollEnded");
   };
 
   eventEmitter.start = () => {
     contracts = [
-      openSeaEventListener,
-      looksRareEventListener,
-      raribleEventListener,
-      foundationEventListener,
-      x2y2EventListener,
-    ].map((createListener) => createListener());
+      { listener: openSeaEventListener, id: "openSea" },
+      { listener: looksRareEventListener, id: "looksRare" },
+      { listener: raribleEventListener, id: "rarible" },
+      { listener: foundationEventListener, id: "foundation" },
+      { listener: x2y2EventListener, id: "x2y2" },
+    ]
+      .filter(({ id }) => ALLOWED_MARKETPLACE_IDS.includes(id))
+      .map(({ listener }) => listener());
   };
 
   eventEmitter.stop = () => {
