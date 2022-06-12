@@ -24,11 +24,16 @@ const loggingStreams = levels.reduce((streams, level) => {
 /**
  * Calls a LooksRare endpoint with a limited number of retries.
  * @typedef {"info"|"debug"|"warning"|"error"|"other"} Level - The message's log level.
- * @param  {String} message - The message to log.
- * @param  {Level} level - The logging's level.
+ * @param {String} message - The message to log.
+ * @param {Level} level - The logging's level.
+ * @param {Error} error - (optional) The thrown error object.
  * @return {Array} result - The result of the call.
  */
-export default function logMessage(message, level) {
+export default function logMessage(message, level, error) {
   const stream = loggingStreams[level] || loggingStreams.other;
-  stream.write(`${new Date().toISOString()}: ${message}\n`);
+  stream.write(
+    `${new Date().toISOString()}: ${message}${
+      error ? `Stack trace: ${error.stack}` : ""
+    }\n`
+  );
 }
