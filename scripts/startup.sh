@@ -46,6 +46,7 @@ echo "DEFAULT_SERVER_ALARM_LIMIT=${DEFAULT_SERVER_ALARM_LIMIT}" | sudo tee -a /e
 source /etc/environment
 
 sudo -u postgres psql -U postgres -d postgres -c "create user $DB_USERNAME with password '$DB_PASSWORD'; alter user $DB_USERNAME with createdb"
+sudo -u postgres createdb flipanceadmin
 sudo -u postgres npm run setup-db
 echo "DB set up"
 
