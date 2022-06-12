@@ -46,6 +46,40 @@ const ethProvider = getDefaultProvider("homestead", {
 });
 
 /**
+ *
+ * Given a price and a floor, computes the floor difference such that it
+ * fits a maximum and a minimum.
+ * @param {Object} params
+ * @param {String} params.host The database's hostname. Default: "localhost"
+ * @param {Number} params.port The database's port. Default: 5432
+ * @param {String} params.user The database's user. Default: "postgres"
+ * @param {String} params.password The user's password.
+ * @param {String} params.dbName The database's name. Default: "flipance"
+ * @return {void}
+ */
+const computeFloorDifference = (
+  price,
+  floor,
+  lowerBound = -(10 ** 9),
+  upperBound = 10 ** 9
+) => {
+  if (floor === 0) {
+    return 1;
+  }
+
+  if (price === 0) {
+    return -1;
+  }
+
+  const difference = (price - floor) / floor;
+  return difference < lowerBound
+    ? lowerBound
+    : difference > upperBound
+    ? upperBound
+    : difference;
+};
+
+/**
  * This function takes as parameter already-configured clients and is in
  * charge of monitoring blockchain events on the target marketplaces and
  * notifying users/servers of these events.
@@ -125,7 +159,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       isHighestOffer,
       collectionFloor,
-      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
+      floorDifference: computeFloorDifference(price, collectionFloor),
     });
   };
 
@@ -165,7 +199,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       orderHash,
       collectionFloor,
-      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
+      floorDifference: computeFloorDifference(price, collectionFloor),
     });
   };
 
@@ -192,7 +226,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       orderHash,
       collectionFloor,
-      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
+      floorDifference: computeFloorDifference(price, collectionFloor),
     });
   };
 
