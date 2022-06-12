@@ -1,3 +1,4 @@
+/* eslint-disable max-len */
 /*
  * Functions to interact with LooksRare's API
  */
@@ -14,8 +15,8 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 
-const hoursAgo = (hours = 2) =>
-  new Date(new Date().setHours(new Date().getHours() - hours));
+const minutesAgo = (minutes = 2) =>
+  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
 /**
  * Calls a LooksRare endpoint with a limited number of retries.
@@ -50,19 +51,17 @@ const callLRWithRetries = (endpoint = "", retries = 3) =>
     });
 
 /**
- * Get a collection's first N offers on LooksRare, sorted by price descending
- * (the highest offer will be the first in the returned array). See
- * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
- * for reference.
- * @param  {String} collection - The collection's Ethereum address.
- * @param  {Date} startTime - The date object for the moment from which to
- * retrieve the collections.
- * @typedef LooksRareOffer - The LooksRare offer.
- * @param hash - The bid's hash.
- * @param price - The bid's amount in wei.
- * @param endTime - The timestamp for when the bid ends.
- * @param signer - The buyer's Ethereum address.
- * @return {Array[LooksRareOffer]} offers - The result of the call.
+ * Get a collection's first N offers on LooksRare, sorted by price descending (the highest offer will be the first in the returned array). See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
+ * @param {Object} params - The query parameters
+ * @param {String} params.collection - The collection's address.
+ * @param {String} params.first - How many orders to retrieve, ordered by highest offer price.
+ * @typedef LooksRareOrder - The LooksRare offer.
+ * @param {String} hash - The bid's hash.
+ * @param {String} price - The bid's amount in wei.
+ * @param {Number} endTime - The timestamp for when the bid ends.
+ * @param {String} signer - The buyer's Ethereum address.
+ * @param tokenId
+ * @return {Array[LooksRareOrder]} offers - The result of the call.
  */
 export const getCollectionOffers = ({ collection, first = 1 }) =>
   callLRWithRetries(
@@ -70,18 +69,28 @@ export const getCollectionOffers = ({ collection, first = 1 }) =>
   );
 
 /**
- * Get a collection's floor price on LooksRare. See
- * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
- * for reference.
- * @param  {String} collection - The collection's Ethereum address.
- * @param  {Date} startTime - The date object for the moment from which to
- * retrieve the collections.
- * @return {Number} floor - The collection's floor in Ether.
+ * Get a collection's floor order on LooksRare. See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
+ * @param {Object} params - The query parameters
+ * @param {String} params.collection - The collection's address.
+ * @param {String} params.first - How many orders to retrieve, ordered by lowest asking price.
+ * @return {Array[LooksRareOrder]} floor - The collection's floor order.
+ */
+export const getCollectionFloor = ({ collection, first = 1 }) =>
+  callLRWithRetries(
+    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=PRICE_ASC`
+  );
+
+/**
+ * Get a collection's latest listings on LooksRare. See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
+ * @param {Object} params - The parameters object
+ * @param {String} params.collection - The collection's address.
+ * @param {Date} params.maxAge - The max age an listing can have.
+ * @param {String} params.cursor - The hash of the oldest order, used to navigate the paginated response.
+ * @return {Array[LooksRareOrder]}
  */
 export const getCollectionListings = ({
   collection,
-  maxAge = hoursAgo(2),
-  currentListings = 0,
+  maxAge = minutesAgo(2),
   first = 150,
   cursor = null,
 }) => {
@@ -104,7 +113,6 @@ export const getCollectionListings = ({
       const otherListings = await getCollectionListings({
         collection,
         maxAge,
-        currentListings: currentListings + listingsBelowMaxAge.length,
         first,
         cursor: oldestListing.hash,
       });

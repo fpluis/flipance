@@ -5,6 +5,7 @@ import path from "path";
 import dotenv from "dotenv";
 import EventEmitter from "events";
 import {
+  getCollectionFloor,
   getCollectionListings,
   getCollectionOffers,
 } from "../looksrare-api/index.js";
@@ -31,8 +32,8 @@ const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 
-const hoursAgo = (hours = 2) =>
-  new Date(new Date().setHours(new Date().getHours() - hours));
+const minutesAgo = (minutes = 2) =>
+  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
 const { MARKETPLACES } = process.env;
 const ALLOWED_MARKETPLACE_IDS =
@@ -51,8 +52,8 @@ export default (ethProvider, collections = []) => {
   let contracts;
   const polledTimes = collections.reduce((map, collection) => {
     map[collection.toLowerCase()] = {
-      listings: hoursAgo(2),
-      offers: hoursAgo(2),
+      listings: minutesAgo(2),
+      offers: minutesAgo(2),
     };
 
     return map;
@@ -690,7 +691,7 @@ export default (ethProvider, collections = []) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
-        const { [queryType]: maxAge = hoursAgo(2) } = collectionTimes;
+        const { [queryType]: maxAge = minutesAgo(2) } = collectionTimes;
         return call({ collection, maxAge }).then((response) => {
           handleResponse(collection, response, maxAge);
           collectionTimes[queryType] = new Date();
@@ -708,8 +709,61 @@ export default (ethProvider, collections = []) => {
   };
 
   /**
-   * Updates the collection floors of all the collections for which at least
-  one user owns an NFT.
+   * Retrieves the floor listings for the collections where at least one user owns an NFT.
+   * @param {Array[String]} collections - The collection addresses
+   */
+  const pollLRFloors = async (collections) => {
+    const handleResponse = async (collection, listings) => {
+      if (listings.length === 0) {
+        return;
+      }
+
+      listings
+        .sort(({ price: price1 }, { price: price2 }) => price1 - price2)
+        .forEach(async (listing) => {
+          const {
+            price,
+            endTime: endsAt,
+            startTime: startsAt,
+            signer,
+            tokenId,
+          } = listing;
+          const tokenContract = new ethers.Contract(
+            collection,
+            erc721Abi,
+            ethProvider
+          );
+          const metadataUri = await tokenContract
+            .tokenURI(tokenId)
+            .catch(() => {
+              return null;
+            });
+          emit("listing", {
+            ...listing,
+            isNewFloor: true,
+            price: Number(etherUtils.formatEther(price)),
+            seller: signer,
+            startsAt: new Date(startsAt * 1000),
+            endsAt: new Date(endsAt * 1000),
+            marketplace: "looksRare",
+            collection: collection.toLowerCase(),
+            metadataUri,
+            blockchain: "eth",
+            standard: "ERC-721",
+          });
+        });
+    };
+
+    return pollLRAPI(
+      collections,
+      getCollectionFloor,
+      handleResponse,
+      "listings"
+    );
+  };
+
+  /**
+   * Retrieves the latest listings for the collections where at least one user owns an NFT.
    * @param {Array[String]} collections - The collection addresses
    */
   const pollLRListings = async (collections) => {
@@ -810,6 +864,8 @@ export default (ethProvider, collections = []) => {
     console.log(`Polling collections ${JSON.stringify(collectionsToPoll)}`);
     if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
       console.log(`Polling LR`);
+      await pollLRFloors(collectionsToPoll);
+      await sleep(POLL_COLLECTION_SLICE_DELAY);
       await pollLRListings(collectionsToPoll);
       await sleep(POLL_COLLECTION_SLICE_DELAY);
       await pollLRCollectionOffers(collectionsToPoll);

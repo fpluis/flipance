@@ -139,8 +139,16 @@ const monitorBlockchainEvents = async ({
       endsAt: currentEndsAt = new Date("1970-01-01"),
     } = {}
   ) => {
-    const { collection, marketplace, price, endsAt, hash: orderHash } = event;
+    const {
+      collection,
+      marketplace,
+      price,
+      endsAt,
+      hash: orderHash,
+      isNewFloor = false,
+    } = event;
     if (
+      isNewFloor ||
       collectionFloor === 0 ||
       price < collectionFloor ||
       currentEndsAt < new Date().getTime()
