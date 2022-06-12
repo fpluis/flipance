@@ -40,8 +40,8 @@ echo "DB_USERNAME=${DB_USERNAME}" | sudo tee -a /etc/environment
 echo "DB_NAME=${DB_NAME}" | sudo tee -a /etc/environment
 echo "MAX_NICKNAME_LENGTH=${MAX_NICKNAME_LENGTH}" | sudo tee -a /etc/environment
 echo "MAX_OFFER_FLOOR_DIFFERENCE=${MAX_OFFER_FLOOR_DIFFERENCE}" | sudo tee -a /etc/environment
-echo "DEFAULT_USER_ALARM_LIMIT=${DEFAULT_USER_ALARM_LIMIT}" | sudo tee -a /etc/environment
-echo "DEFAULT_SERVER_ALARM_LIMIT=${DEFAULT_SERVER_ALARM_LIMIT}" | sudo tee -a /etc/environment
+echo "DEFAULT_USER_ALERT_LIMIT=${DEFAULT_USER_ALERT_LIMIT}" | sudo tee -a /etc/environment
+echo "DEFAULT_SERVER_ALERT_LIMIT=${DEFAULT_SERVER_ALERT_LIMIT}" | sudo tee -a /etc/environment
 
 source /etc/environment
 

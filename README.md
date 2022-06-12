@@ -221,8 +221,8 @@ npm run start
 Apart from which service providers you use, there are some global settings you can modify as environment variables either in a .env file or the terraform variables:
 - **MAX_NICKNAME_LENGTH**: Max. length in characters that alert nicknames can have.
 - **MAX_OFFER_FLOOR_DIFFERENCE**: Default max. difference as a percentage between the floor and the offer for all alerts.
-- **DEFAULT_USER_ALARM_LIMIT**: Default max number of alerts a user can have.
-- **DEFAULT_SERVER_ALARM_LIMIT**: Default max number of alerts a server can have.
+- **DEFAULT_USER_ALERT_LIMIT**: Default max number of alerts a user can have.
+- **DEFAULT_SERVER_ALERT_LIMIT**: Default max number of alerts a server can have.
 
 # Permissions
 

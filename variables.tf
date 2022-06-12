@@ -158,13 +158,13 @@ variable "MAX_OFFER_FLOOR_DIFFERENCE" {
   default     = 15
 }
 
-variable "DEFAULT_USER_ALARM_LIMIT" {
+variable "DEFAULT_USER_ALERT_LIMIT" {
   type        = string
   description = "Default max number of alerts a user can have. Each user in the database has a personal limit, so it can be changed for a specific user by querying the database."
   default     = 3
 }
 
-variable "DEFAULT_SERVER_ALARM_LIMIT" {
+variable "DEFAULT_SERVER_ALERT_LIMIT" {
   type        = string
   description = "Default max number of alerts a server can have. Each server in the database has its own limit, and it can be changed for a specific server by querying the database."
   default     = 1
