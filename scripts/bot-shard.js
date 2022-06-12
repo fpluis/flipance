@@ -23,7 +23,7 @@ const DELAY_BETWEEN_POLLS = 20 * 1000;
 
 // After how many polls the Discord client should reset.
 // This is a preventive measure against silent disconnects.
-const POLLS_BETWEEN_RESETS = 4;
+const POLLS_BETWEEN_RESETS = 100;
 
 const minutesAgo = (minutes = 1) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
@@ -61,6 +61,8 @@ const pollNFTEvents = async ({
     botClient.destroy();
     const newBotClient = await createBotClient({
       dbClient,
+      shardId,
+      totalShards,
     });
     pollNFTEvents({
       botClient: newBotClient,

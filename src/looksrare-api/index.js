@@ -14,8 +14,8 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 
-const daysAgo = (days = 30) =>
-  new Date(new Date().setDate(new Date().getDate() - days));
+const hoursAgo = (hours = 2) =>
+  new Date(new Date().setHours(new Date().getHours() - hours));
 
 /**
  * Calls a LooksRare endpoint with a limited number of retries.
@@ -80,7 +80,7 @@ export const getCollectionOffers = ({ collection, first = 1 }) =>
  */
 export const getCollectionListings = ({
   collection,
-  maxAge = daysAgo(1),
+  maxAge = hoursAgo(2),
   currentListings = 0,
   first = 150,
   cursor = null,

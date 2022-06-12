@@ -33,7 +33,7 @@ const POLL_USER_TOKENS_INTERVAL = 5 * 60 * 1000;
  * Every "N" NFT polls, the Discord client is reset to make sure
  * it doesn't die silently.
  */
-const POLLS_PER_RESET = 10;
+// const POLLS_PER_RESET = 10;
 
 const ethProvider = getDefaultProvider("homestead", {
   etherscan: ETHERSCAN_API_KEY,
@@ -192,19 +192,14 @@ const monitorBlockchainEvents = async ({
   nftEventEmitter.poll(collections);
   nftEventEmitter.start();
   nftEventEmitter.on("event", handleNFTEvent);
-  let currentPolls = 0;
   nftEventEmitter.on("pollEnded", async () => {
-    if (currentPolls < POLLS_PER_RESET) {
-      currentPolls += 1;
-      nftEventEmitter.poll();
-    } else {
-      nftEventEmitter.stop();
-      monitorBlockchainEvents({
-        dbClient,
-        nftClient,
-        nftEventEmitter,
-      });
-    }
+    console.log(`Polling ended`);
+    nftEventEmitter.stop();
+    monitorBlockchainEvents({
+      dbClient,
+      nftClient,
+      nftEventEmitter,
+    });
   });
 };
 
