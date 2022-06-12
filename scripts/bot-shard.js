@@ -45,7 +45,21 @@ const pollNFTEvents = async ({
     createdAt: lastPollTime,
   });
   const newPollTime = new Date();
-  const myEvents = nftEvents.filter(({ id }) => id % totalShards === shardId);
+  console.log(`New events: ${JSON.stringify(nftEvents)}`);
+  const myEvents = nftEvents.reduce((events, { watchers, ...event }) => {
+    const myWatchers = watchers.filter(({ discordId }) => {
+      // eslint-disable-next-line no-bitwise
+      return (discordId >> 22) % totalShards === shardId;
+    });
+    if (myWatchers.length > 0) {
+      return events.concat({ ...event, watchers: myWatchers });
+    }
+
+    return events;
+  }, []);
+  console.log(
+    `I'm handling ${myEvents.length} events out of ${nftEvents.length} total events`
+  );
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
   });
