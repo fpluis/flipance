@@ -125,7 +125,7 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
     case "success":
       return interaction.editReply({
         content: `Alert successfully created for address ${address}${
-          nickname ? `with nickname ${nickname}.` : "."
+          nickname ? ` with nickname ${nickname}.` : "."
         }`,
         ephemeral: true,
       });
@@ -267,22 +267,25 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
     tokens: [],
     nickname: nicknameOption ? nicknameOption.trim() : null,
   });
+  const nicknameDescription = nicknameOption
+    ? ` with alert nickname "${nicknameOption}"`
+    : "";
   switch (result) {
     case "success":
       return discordClient.users.cache
         .get(discordId)
         .send(
-          `Notifications for "${address}" enabled. Please don't turn off your DMs on every server we share so I can keep messaging you.`
+          `Notifications for "${address}" enabled${nicknameDescription}. Please don't turn off your DMs on every server we share so we can keep messaging you.`
         )
         .then(() => {
           return interaction.editReply({
-            content: `Alert successfully created for address ${address}.`,
+            content: `Alert successfully created for address ${address}${nicknameDescription}.`,
             ephemeral: true,
           });
         })
         .catch(() => {
           return interaction.editReply({
-            content: `\nYou have your DMs turned off. Please enable DMs on at least one server we share so I can notify you of a wallet's activity.`,
+            content: `\nYou have your DMs turned off. Please enable DMs on at least one server we share so we can notify you of a wallet's activity.`,
             ephemeral: true,
           });
         });
@@ -310,10 +313,11 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
  * Handle the /deletealert slash command. Only users with the Admin permission in a discord server can delete alerts for that server.
  * @param  {Object} params
  * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {Object} clients.discordClient - The initialized discord client.
  * @param  {Object} params.dbClient - The initialized database client.
  * @return {void}
  */
-const handleDeleteAlert = async ({ dbClient, interaction }) => {
+const handleDeleteAlert = async ({ dbClient, discordClient, interaction }) => {
   const {
     guildId,
     user: { id: discordId },
@@ -352,6 +356,9 @@ const handleDeleteAlert = async ({ dbClient, interaction }) => {
     address == null ? `with nickname ${nickname}` : `for address ${address}`;
   switch (result) {
     case "success":
+      await discordClient.users.cache
+        .get(discordId)
+        .send(`Alert ${identifier} successfully removed.`);
       return interaction.editReply({
         content: `Alert ${identifier} successfully removed.`,
         ephemeral: true,
@@ -620,6 +627,13 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
     memberPermissions,
   } = interaction;
   const maxOfferFloorDifference = interaction.options.getNumber("percentage");
+  if (maxOfferFloorDifference < 0 || maxOfferFloorDifference > 100) {
+    return interaction.editReply({
+      content: "Please specify a positive percentage between 0 and 100.",
+      ephemeral: true,
+    });
+  }
+
   const alert = interaction.options.getString("alert");
   await interaction.deferReply({
     content: "Fetching your preferences...",
@@ -710,10 +724,26 @@ const handleSetNickname = async ({ dbClient, interaction }) => {
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(interaction, result, {
-    ...object,
-    address,
-    nickname,
+  if (result === "success") {
+    return interaction.editReply({
+      content: `Your preferences have been saved. Your new nickname for the alert with address ${address} is now ${nickname}.\n\n${describeSettings(
+        object
+      )}`,
+      ephemeral: true,
+    });
+  }
+
+  if (result === "missing-alert") {
+    return interaction.editReply({
+      content: "You haven't created any alerts for that address.",
+      ephemeral: true,
+    });
+  }
+
+  return interaction.editReply({
+    content:
+      "There was an error updating your preferences. Please try again later.",
+    ephemeral: true,
   });
 };
 
@@ -893,7 +923,7 @@ export default async (clients, interaction) => {
     try {
       return await handleCommand(args);
     } catch (error) {
-      logMessage(`Error handling user command: ${error.toString()}`, "error");
+      logMessage(`Error handling user command`, "error", error);
       return Promise.resolve();
     }
   }
@@ -902,7 +932,7 @@ export default async (clients, interaction) => {
     try {
       return await handleSelectMenu(args);
     } catch (error) {
-      logMessage(`Error handling select menu: ${error.toString()}`, "error");
+      logMessage(`Error handling select menu`, "error", error);
       return Promise.resolve();
     }
   }
