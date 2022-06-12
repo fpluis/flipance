@@ -401,7 +401,7 @@ export default (ethProvider, collections = []) => {
         marketplace,
         seller,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         blockchain: "eth",
         ...parsedEvent,
       });
@@ -441,7 +441,7 @@ export default (ethProvider, collections = []) => {
         marketplace,
         seller,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         amount: amount.toNumber(),
         transactionHash,
         blockchain: "eth",
@@ -459,7 +459,7 @@ export default (ethProvider, collections = []) => {
         marketplace,
         seller,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         amount: amount.toNumber(),
         transactionHash,
         blockchain: "eth",
@@ -521,7 +521,7 @@ export default (ethProvider, collections = []) => {
         marketplace,
         seller,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         amount,
         blockchain: "eth",
         ...parsedEvent,
@@ -590,7 +590,7 @@ export default (ethProvider, collections = []) => {
       emit("placeBid", {
         transactionHash,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         endsAt: new Date(endTime.toNumber() * 1000),
         marketplace,
         blockchain: "eth",
@@ -607,7 +607,7 @@ export default (ethProvider, collections = []) => {
       emit("createAuction", {
         transactionHash,
         collection: collection.toLowerCase(),
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         seller,
         tokenId,
         marketplace,
@@ -659,7 +659,7 @@ export default (ethProvider, collections = []) => {
         marketplace,
         seller,
         buyer,
-        price: etherUtils.formatEther(price),
+        price: Number(etherUtils.formatEther(price)),
         blockchain: "eth",
         ...parsedEvent,
       });
@@ -740,7 +740,7 @@ export default (ethProvider, collections = []) => {
             });
           emit("listing", {
             ...listing,
-            price: etherUtils.formatEther(price),
+            price: Number(etherUtils.formatEther(price)),
             seller: signer,
             startsAt: new Date(startsAt * 1000),
             endsAt: new Date(endsAt * 1000),
@@ -778,7 +778,7 @@ export default (ethProvider, collections = []) => {
         const { price, endTime: endsAt, startTime: startsAt, signer } = offer;
         emit("offer", {
           ...offer,
-          price: etherUtils.formatEther(price),
+          price: Number(etherUtils.formatEther(price)),
           buyer: signer,
           startsAt: new Date(startsAt * 1000),
           endsAt: new Date(endsAt * 1000),

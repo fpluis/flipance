@@ -205,7 +205,7 @@ const createTableQueries = [
     standard SMALLINT,\
     is_highest_offer BOOLEAN,\
     collection_floor DOUBLE PRECISION,\
-    floor_difference NUMERIC(10, 2),\
+    floor_difference NUMERIC(12, 4),\
     price DOUBLE PRECISION\
   );`,
 ];
@@ -679,7 +679,7 @@ const toNFTEventObject = (nftEvent) => {
     blockchain: deserializeBlockchain(blockchain),
     standard: deserializeStandard(standard),
     isHighestOffer,
-    floorDifference,
+    floorDifference: Number(floorDifference),
     collectionFloor,
     tokenId,
     metadataUri,
@@ -1565,11 +1565,14 @@ export const createDbClient = async ({
       { value: serializeStandard(standard), name: "standard" },
       { value: isHighestOffer, name: "is_highest_offer" },
       {
-        value: collectionFloor === 0 ? null : collectionFloor,
+        value: collectionFloor,
         name: "collection_floor",
       },
       {
-        value: collectionFloor === 0 ? null : floorDifference,
+        value:
+          price === 0 || collectionFloor === 0 || floorDifference == null
+            ? null
+            : floorDifference,
         name: "floor_difference",
       },
       { value: price, name: "price" },

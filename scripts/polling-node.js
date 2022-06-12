@@ -125,7 +125,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       isHighestOffer,
       collectionFloor,
-      floorDifference: (collectionFloor - price) / collectionFloor,
+      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
     });
   };
 
@@ -157,7 +157,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       orderHash,
       collectionFloor,
-      floorDifference: (collectionFloor - price) / collectionFloor,
+      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
     });
   };
 
@@ -184,7 +184,7 @@ const monitorBlockchainEvents = async ({
       ...event,
       orderHash,
       collectionFloor,
-      floorDifference: (collectionFloor - price) / collectionFloor,
+      floorDifference: price === 0 ? 1 : (price - collectionFloor) / price,
     });
   };
 
