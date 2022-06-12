@@ -22,13 +22,14 @@ const townStarAbi = JSON.parse(readFileSync("data/townStarAbi.json"));
 
 const openSeaSSAddress = "0x495f947276749ce646f68ac8c248420045cb7b5e";
 const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
+const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
 
 const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
-const MAX_BLOCK_CACHE_SIZE = 10000;
+const MAX_BLOCK_CACHE_SIZE = 100;
 
-// const minutesAgo = (minutes = 5) =>
-//   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
+const daysAgo = (days = 30) =>
+  new Date(new Date().setDate(new Date().getDate() - days));
 
 /**
  * Create an EventEmitter that listens to transactions on the main
@@ -38,15 +39,13 @@ const MAX_BLOCK_CACHE_SIZE = 10000;
  * @return {EventEmitter}
  */
 export default (ethProvider, collections = []) => {
-  // let pollLRTimeout;
   let blockCache = {};
   let collectionsToPoll = collections;
   let contracts;
   const polledTimes = collections.reduce((map, collection) => {
-    // Poll events since the start of time
     map[collection.toLowerCase()] = {
-      listings: new Date("1970-01-01"),
-      offers: new Date("1970-01-01"),
+      listings: daysAgo(1),
+      offers: daysAgo(1),
     };
 
     return map;
@@ -100,10 +99,175 @@ export default (ethProvider, collections = []) => {
    */
   const parseAddressFromLogs = (address) => {
     if (address.startsWith("0x000000000000000000000000")) {
-      return `0x${address.slice(26)}`;
+      return `0x${address.slice(26)}`.toLowerCase();
     }
 
-    return address;
+    return address.toLowerCase();
+  };
+
+  const parseOpenSeaSSLog = async (transferLog) => {
+    const { data, topics } = transferLog;
+    const [, , from, to] = topics;
+    // 0x + 64 bit int = 66-length string
+    const tokenIdHex = data.slice(0, 66);
+    if (tokenIdHex == null) {
+      return null;
+    }
+
+    // eslint-disable-next-line no-undef
+    const tokenId = BigInt(tokenIdHex).toString(10);
+    const tokenContract = new ethers.Contract(
+      openSeaSSAddress,
+      erc1155Abi,
+      ethProvider
+    );
+    let metadataUri = await tokenContract.uri(tokenIdHex).catch(() => {
+      return null;
+    });
+    if (/0x\{id\}/.test(metadataUri)) {
+      metadataUri = metadataUri.replace(`0x{id}`, tokenIdHex);
+    }
+
+    return {
+      collection: openSeaSSAddress,
+      tokenId,
+      metadataUri,
+      standard: "ERC-1155",
+      from: parseAddressFromLogs(from),
+      to: parseAddressFromLogs(to),
+    };
+  };
+
+  const parseERC721Log = async (transferLog) => {
+    const { address: collection, topics } = transferLog;
+    const [, from, to, tokenIdHex] = topics;
+    if (tokenIdHex == null) {
+      logError(
+        `Null token id from ERC-721 transfer log ${JSON.stringify(transferLog)}`
+      );
+    }
+
+    const tokenId = parseInt(Number(tokenIdHex), 10);
+    const tokenContract = new ethers.Contract(
+      collection,
+      erc721Abi,
+      ethProvider
+    );
+    const metadataUri = await tokenContract.tokenURI(tokenIdHex).catch(() => {
+      return null;
+    });
+    return {
+      collection: collection.toLowerCase(),
+      tokenId,
+      metadataUri,
+      standard: "ERC-721",
+      from: parseAddressFromLogs(from),
+      to: parseAddressFromLogs(to),
+    };
+  };
+
+  const parseERC1155Log = async (transferLog) => {
+    const { address: collection, data, topics } = transferLog;
+    const tokenIdHex = data.slice(0, 66);
+    if (tokenIdHex == null) {
+      return null;
+    }
+
+    const [, , from, to] = topics;
+    // eslint-disable-next-line no-undef
+    const tokenId = BigInt(tokenIdHex).toString(10);
+    if (collection.toLowerCase() === townStarAddress) {
+      const townStarContract = new ethers.Contract(
+        townStarAddress,
+        townStarAbi,
+        ethProvider
+      );
+      const events = await townStarContract
+        .queryFilter(townStarContract.filters.URI(null, tokenIdHex))
+        .catch(() => {
+          return [{ args: [] }];
+        });
+      const [
+        {
+          args: [metadataUri],
+        },
+      ] = events;
+      return {
+        collection: collection.toLowerCase(),
+        tokenId,
+        metadataUri,
+        standard: "ERC-1155",
+        from: parseAddressFromLogs(from),
+        to: parseAddressFromLogs(to),
+      };
+    }
+
+    const tokenContract = new ethers.Contract(
+      collection,
+      erc1155Abi,
+      ethProvider
+    );
+    const metadataUri = await tokenContract.uri(tokenIdHex).catch(() => {
+      return null;
+    });
+    return {
+      collection: collection.toLowerCase(),
+      tokenId,
+      metadataUri,
+      standard: "ERC-1155",
+      from: parseAddressFromLogs(from),
+      to: parseAddressFromLogs(to),
+    };
+  };
+
+  const parseTransferLog = async (logs, indexInLogs) => {
+    const transferLog = logs[indexInLogs];
+    const { topics = [], address = "" } = transferLog;
+    if (address.toLowerCase() === openSeaSSAddress) {
+      return parseOpenSeaSSLog(transferLog);
+    }
+
+    if (
+      topics[0] === etherUtils.id("Transfer(address,address,uint256)") &&
+      topics.length === 4
+    ) {
+      const ercLog = await parseERC721Log(transferLog);
+      if (ercLog.to === gemV2Address) {
+        const secondTransfer = logs.slice(indexInLogs + 1).find((log) => {
+          const { topics, address: collectionAddress } = log;
+          const [topicId, from] = topics;
+          return (
+            collectionAddress === address &&
+            topicId === etherUtils.id("Transfer(address,address,uint256)") &&
+            parseAddressFromLogs(from) === gemV2Address
+          );
+        });
+
+        if (secondTransfer == null) {
+          return ercLog;
+        }
+
+        const {
+          topics: [, , actualBuyer],
+        } = secondTransfer;
+        return {
+          ...ercLog,
+          to: parseAddressFromLogs(actualBuyer),
+          intermediary: gemV2Address.toLowerCase(),
+        };
+      }
+
+      return ercLog;
+    }
+
+    if (
+      topics[0] ===
+      etherUtils.id("TransferSingle(address,address,address,uint256,uint256)")
+    ) {
+      return parseERC1155Log(transferLog);
+    }
+
+    return null;
   };
 
   /**
@@ -150,154 +314,30 @@ export default (ethProvider, collections = []) => {
     const timestamp = await getTimestamp(blockNumber).catch(() => {
       return new Date().getTime();
     });
-    const props = { timestamp, initiator: from };
+    const props = { startsAt: new Date(timestamp), initiator: from };
     if (eventType === "cancelOrder") {
       return props;
     }
 
     try {
       props.gas = gasUsed ? gasUsed.toNumber() : 0;
-      const openSeaSSTransfer = logs.find(
-        ({ address = "" }) => address.toLowerCase() === openSeaSSAddress
+      let indexInLogs = logs.findIndex(
+        ({ logIndex }) => logIndex === event.logIndex
       );
-      if (openSeaSSTransfer) {
-        const { data, topics } = openSeaSSTransfer;
-        const [, , from, to] = topics;
-        // 0x + 64 bit int = 66-length string
-        const tokenIdHex = data.slice(0, 66);
-        if (tokenIdHex == null) {
-          logError(
-            `Null token id hex in tx receipt ${JSON.stringify(
-              transactionReceipt
-            )}`
-          );
-        }
-
-        // eslint-disable-next-line no-undef
-        const tokenId = BigInt(tokenIdHex).toString(10);
-        const tokenContract = new ethers.Contract(
-          openSeaSSAddress,
-          erc1155Abi,
-          ethProvider
-        );
-        let metadataUri = await tokenContract.uri(tokenIdHex).catch(() => {
-          return null;
-        });
-        if (/0x\{id\}/.test(metadataUri)) {
-          metadataUri = metadataUri.replace(`0x{id}`, tokenIdHex);
-        }
-
-        return {
-          collection: openSeaSSAddress,
-          tokenId,
-          metadataUri,
-          standard: "ERC-1155",
-          ...props,
-          from: parseAddressFromLogs(from),
-          to: parseAddressFromLogs(to),
-        };
-      }
-
-      const erc721TransferLog = logs.find(
-        ({ topics }) =>
-          topics[0] === etherUtils.id("Transfer(address,address,uint256)") &&
-          topics.length === 4
-      );
-      if (erc721TransferLog) {
-        const { address: collection, topics } = erc721TransferLog;
-        const [, from, to, tokenIdHex] = topics;
-        const tokenId = parseInt(Number(tokenIdHex), 10);
-        const tokenContract = new ethers.Contract(
-          collection,
-          erc721Abi,
-          ethProvider
-        );
-        if (tokenIdHex == null) {
-          logError(
-            `Null token id in tx receipt ${JSON.stringify(transactionReceipt)}`
-          );
-        }
-
-        const metadataUri = await tokenContract
-          .tokenURI(tokenIdHex)
-          .catch(() => {
-            return null;
-          });
-        return {
-          collection: collection.toLowerCase(),
-          tokenId,
-          metadataUri,
-          standard: "ERC-721",
-          ...props,
-          from: parseAddressFromLogs(from),
-          to: parseAddressFromLogs(to),
-        };
-      }
-
-      const erc1155TransferLog = logs.find(
-        ({ topics }) =>
-          topics[0] ===
-          etherUtils.id(
-            "TransferSingle(address,address,address,uint256,uint256)"
-          )
-      );
-      if (erc1155TransferLog) {
-        const { address: collection, data, topics } = erc1155TransferLog;
-        const tokenIdHex = data.slice(0, 66);
-        const [, , from, to] = topics;
-        if (tokenIdHex == null) {
-          logError(
-            `Null token id in tx receipt ${JSON.stringify(transactionReceipt)}`
-          );
-        }
-
-        // eslint-disable-next-line no-undef
-        const tokenId = BigInt(tokenIdHex).toString(10);
-        if (collection.toLowerCase() === townStarAddress) {
-          const townStarContract = new ethers.Contract(
-            townStarAddress,
-            townStarAbi,
-            ethProvider
-          );
-          const events = await townStarContract
-            .queryFilter(townStarContract.filters.URI(null, tokenIdHex))
-            .catch(() => {
-              return [{ args: [] }];
-            });
-          const [
-            {
-              args: [metadataUri],
-            },
-          ] = events;
+      // Traverse the tx's logs backwards to find the transfer log
+      while (indexInLogs >= 0) {
+        const parsedTransferLog = await parseTransferLog(logs, indexInLogs);
+        if (parsedTransferLog != null) {
           return {
-            collection: collection.toLowerCase(),
-            tokenId,
-            metadataUri,
-            standard: "ERC-1155",
             ...props,
-            from: parseAddressFromLogs(from),
-            to: parseAddressFromLogs(to),
+            ...parsedTransferLog,
           };
         }
 
-        const tokenContract = new ethers.Contract(
-          collection,
-          erc1155Abi,
-          ethProvider
-        );
-        const metadataUri = await tokenContract.uri(tokenIdHex).catch(() => {
-          return null;
-        });
-        return {
-          collection: collection.toLowerCase(),
-          tokenId,
-          metadataUri,
-          standard: "ERC-1155",
-          ...props,
-          from: parseAddressFromLogs(from),
-          to: parseAddressFromLogs(to),
-        };
+        indexInLogs -= 1;
       }
+
+      return props;
     } catch (error) {
       logError(`Error getting the token info: ${error.toString()}`);
     }
@@ -313,6 +353,7 @@ export default (ethProvider, collections = []) => {
    * able to destroy the event listeners.
    */
   const openSeaEventListener = () => {
+    const marketplace = "openSea";
     const { address, abi } = ethContracts.openSea;
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.OrdersMatched(), async (...args) => {
@@ -327,7 +368,7 @@ export default (ethProvider, collections = []) => {
       let eventType;
       if (
         parsedEvent.from &&
-        parsedEvent.from.toLowerCase() === parsedEvent.initiator.toLowerCase()
+        parsedEvent.from === parsedEvent.initiator.toLowerCase()
       ) {
         eventType = "acceptOffer";
         buyer = maker;
@@ -340,11 +381,11 @@ export default (ethProvider, collections = []) => {
 
       emit(eventType, {
         transactionHash,
-        marketplace: "openSea",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(price),
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -354,8 +395,8 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event, "cancelOrder");
       emit("cancelOrder", {
         transactionHash,
-        marketplace: "openSea",
-        network: "eth",
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -369,6 +410,7 @@ export default (ethProvider, collections = []) => {
    * able to destroy the event listeners.
    */
   const looksRareEventListener = () => {
+    const marketplace = "looksRare";
     const { address, abi } = ethContracts.looksRare;
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.TakerAsk(), async (...args) => {
@@ -379,13 +421,13 @@ export default (ethProvider, collections = []) => {
       } = event;
       const parsedEvent = await parseEvent(event);
       emit("acceptOffer", {
-        marketplace: "looksRare",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(price),
-        amount,
+        amount: amount.toNumber(),
         transactionHash,
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -397,13 +439,13 @@ export default (ethProvider, collections = []) => {
       } = event;
       const parsedEvent = await parseEvent(event);
       emit("acceptAsk", {
-        marketplace: "looksRare",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(price),
-        amount,
+        amount: amount.toNumber(),
         transactionHash,
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -413,8 +455,8 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event, "cancelOrder");
       emit("cancelOrder", {
         transactionHash,
-        network: "eth",
-        marketplace: "looksRare",
+        blockchain: "eth",
+        marketplace,
         ...parsedEvent,
       });
     });
@@ -428,6 +470,7 @@ export default (ethProvider, collections = []) => {
    * able to destroy the event listeners.
    */
   const raribleEventListener = () => {
+    const marketplace = "rarible";
     const { address, abi } = ethContracts.rarible;
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.Match(), async (...args) => {
@@ -458,12 +501,12 @@ export default (ethProvider, collections = []) => {
 
       emit(type, {
         transactionHash,
-        marketplace: "rarible",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(price),
         amount,
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -473,8 +516,8 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event, "cancelOrder");
       emit("cancelOrder", {
         transactionHash,
-        marketplace: "rarible",
-        network: "eth",
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -488,6 +531,7 @@ export default (ethProvider, collections = []) => {
    * able to destroy the event listeners.
    */
   const foundationEventListener = () => {
+    const marketplace = "foundation";
     const { address, abi } = ethContracts.foundation;
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.ReserveAuctionFinalized(), async (...args) => {
@@ -500,11 +544,11 @@ export default (ethProvider, collections = []) => {
       const priceWithFees = f8nFee.add(creatorFee);
       emit("settleAuction", {
         transactionHash,
-        marketplace: "foundation",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(priceWithFees),
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -514,8 +558,8 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event, "cancelOrder");
       emit("cancelOrder", {
         transactionHash,
-        marketplace: "rarible",
-        network: "eth",
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -529,10 +573,10 @@ export default (ethProvider, collections = []) => {
       emit("placeBid", {
         transactionHash,
         buyer,
-        price,
-        endsAt: endTime,
-        marketplace: "rarible",
-        network: "eth",
+        price: etherUtils.formatEther(price),
+        endsAt: new Date(endTime.toNumber() * 1000),
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -546,11 +590,11 @@ export default (ethProvider, collections = []) => {
       emit("createAuction", {
         transactionHash,
         collection: collection.toLowerCase(),
-        price,
+        price: etherUtils.formatEther(price),
         seller,
         tokenId,
-        marketplace: "rarible",
-        network: "eth",
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -564,6 +608,7 @@ export default (ethProvider, collections = []) => {
    * able to destroy the event listeners.
    */
   const x2y2EventListener = () => {
+    const marketplace = "x2y2";
     const { address, abi } = ethContracts.x2y2;
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.EvInventory(), async (...args) => {
@@ -594,11 +639,11 @@ export default (ethProvider, collections = []) => {
 
       emit(type, {
         transactionHash,
-        marketplace: "x2y2",
+        marketplace,
         seller,
         buyer,
         price: etherUtils.formatEther(price),
-        network: "eth",
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -608,8 +653,8 @@ export default (ethProvider, collections = []) => {
       const parsedEvent = await parseEvent(event, "cancelOrder");
       emit("cancelOrder", {
         transactionHash,
-        marketplace: "x2y2",
-        network: "eth",
+        marketplace,
+        blockchain: "eth",
         ...parsedEvent,
       });
     });
@@ -627,12 +672,10 @@ export default (ethProvider, collections = []) => {
   const pollLRAPI = async (collections, call, handleResponse, queryType) => {
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
-        const collectionTimes = polledTimes[collection] || {};
-        const { queryType: collectionPolledAt = new Date("1970-01-01") } =
-          collectionTimes;
-        const maxAge = collectionPolledAt;
+        const collectionTimes = polledTimes[collection.toLowerCase()] || {};
+        const { [queryType]: maxAge = daysAgo(1) } = collectionTimes;
         return call({ collection, maxAge }).then((response) => {
-          handleResponse(collection, response, collectionPolledAt);
+          handleResponse(collection, response, maxAge);
           collectionTimes[queryType] = new Date();
           polledTimes[collection] = collectionTimes;
         });
@@ -653,20 +696,21 @@ export default (ethProvider, collections = []) => {
    * @param {Array[String]} collections - The collection addresses
    */
   const pollLRListings = async (collections) => {
-    const handleResponse = async (collection, listings, polledTime) => {
+    const handleResponse = async (collection, listings) => {
       if (listings.length === 0) {
         return;
       }
 
       listings
-        .filter(
-          ({ startTime: orderTime }) =>
-            orderTime > polledTime.getTime() / 1000 &&
-            orderTime < new Date().getTime() / 1000
-        )
         .sort(({ price: price1 }, { price: price2 }) => price1 - price2)
         .forEach(async (listing) => {
-          const { price, endTime: endsAt, signer, tokenId } = listing;
+          const {
+            price,
+            endTime: endsAt,
+            startTime: startsAt,
+            signer,
+            tokenId,
+          } = listing;
           const tokenContract = new ethers.Contract(
             collection,
             erc721Abi,
@@ -681,11 +725,12 @@ export default (ethProvider, collections = []) => {
             ...listing,
             price: etherUtils.formatEther(price),
             seller: signer,
-            endsAt: endsAt * 1000,
+            startsAt: new Date(startsAt * 1000),
+            endsAt: new Date(endsAt * 1000),
             marketplace: "looksRare",
             collection: collection.toLowerCase(),
             metadataUri,
-            network: "eth",
+            blockchain: "eth",
             standard: "ERC-721",
           });
         });
@@ -707,31 +752,25 @@ export default (ethProvider, collections = []) => {
    * @param {Array[String]} collections - The collection addresses
    */
   const pollLRCollectionOffers = (collections) => {
-    const handleResponse = async (collection, offers, polledTime) => {
+    const handleResponse = async (collection, offers) => {
       if (offers.length === 0) {
         return;
       }
 
-      offers
-        .filter(
-          ({ startTime: orderTime }) =>
-            orderTime > polledTime.getTime() / 1000 &&
-            orderTime < new Date().getTime() / 1000
-        )
-        .sort(({ price: price1 }, { price: price2 }) => price2 - price1)
-        .forEach((offer) => {
-          const { price, endTime: endsAt, signer } = offer;
-          emit("offer", {
-            ...offer,
-            price: etherUtils.formatEther(price),
-            buyer: signer,
-            endsAt: endsAt * 1000,
-            marketplace: "looksRare",
-            collection: collection.toLowerCase(),
-            network: "eth",
-            standard: "ERC-721",
-          });
+      offers.forEach((offer) => {
+        const { price, endTime: endsAt, startTime: startsAt, signer } = offer;
+        emit("offer", {
+          ...offer,
+          price: etherUtils.formatEther(price),
+          buyer: signer,
+          startsAt: new Date(startsAt * 1000),
+          endsAt: new Date(endsAt * 1000),
+          marketplace: "looksRare",
+          collection: collection.toLowerCase(),
+          blockchain: "eth",
+          standard: "ERC-721",
         });
+      });
     };
 
     return pollLRAPI(

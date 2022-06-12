@@ -23,6 +23,9 @@ const { MAX_NICKNAME_LENGTH = 50, MAX_OFFER_FLOOR_DIFFERENCE = 15 } =
 
 const dbName = `flipance-test-${new Date().toISOString().slice(0, 19)}`;
 
+const minutesAgo = (minutes = 1) =>
+  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
+
 let dbClient;
 
 const setUpTestDatabase = async () => {
@@ -54,17 +57,23 @@ beforeAll(() => setUpTestDatabase());
 
 afterAll(() => tearDownDatabase(), 10000);
 
-const discordId1 = "1234";
-const address1 = "0x1234";
+const discordId1 = "123456789123456789";
+const address1 = "0xb3cc8d3510f16bcaa7f3fa7241fef86a3e890c97";
 
 // The token format is collection/tokenId
-const tokens1 = ["0x6789/2", "0x8888/8"];
+const tokens1 = [
+  "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d/4552",
+  "0xbce3781ae7ca1a5e050bd9c4c77369867ebc307e/2766",
+];
 
-const collection1 = "0x6789";
-const channelId1 = "111111";
+const collection1 = "0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d";
+const channelId1 = "000006789123456789";
 
-const discordId2 = "5678";
-const address2 = "0x5678";
+const discordId2 = "123456789123400000";
+const address2 = "0x4414b5e01d62c0b98a5b13db59bb0813b77283e0";
+
+const transactionHash1 =
+  "0x10d1c19c7d284b048718dd67e0d95851864d19890a8a2771b83d209392f01591";
 
 beforeEach(() => {
   return clearDb({ dbName });
@@ -999,5 +1008,226 @@ test("getCollectionFloor with two collection floors for the same collection", as
     collection: collection1,
     price: 4.2,
     endsAt,
+  });
+});
+
+test("getNFTEvents with no arguments", async () => {
+  const { result, objects: nftEvents } = await dbClient.getNFTEvents();
+  expect(result).toBe("missing-arguments");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getNFTEvents with valid arguments but no events", async () => {
+  const { result, objects: nftEvents } = await dbClient.getNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getNFTEvents with valid arguments but a date after any events have been created", async () => {
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent({
+      transactionHash: transactionHash1,
+      eventType: "acceptOffer",
+    });
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject({
+    transactionHash: transactionHash1,
+  });
+  const { result, objects: nftEvents } = await dbClient.getNFTEvents({
+    createdAt: new Date(),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getNFTEvents with valid arguments and a matching event", async () => {
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent({
+      transactionHash: transactionHash1,
+      eventType: "acceptOffer",
+    });
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject({
+    transactionHash: transactionHash1,
+  });
+  const { result, objects: nftEvents } = await dbClient.getNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents[0]).toMatchObject(nftEvent);
+});
+
+test("getNFTEvents with valid arguments and a complete offer event", async () => {
+  const buyer = "0xc02a7141ede836cc24195a56e9a427ed8e9d5992";
+  const seller = "0x594c6b641626f4ad29aa2bdd046d7ba678f1b7ce";
+  const nftEventParams = {
+    transactionHash: transactionHash1,
+    eventType: "acceptOffer",
+    tokenId: "4552",
+    collection: collection1,
+    initiator: seller,
+    buyer,
+    seller,
+    gas: 277210,
+    metadataUri: "ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq/4552",
+    standard: "ERC-721",
+    price: 93.5,
+  };
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent(nftEventParams);
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject(nftEventParams);
+  const { result, objects: nftEvents } = await dbClient.getNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents[0]).toMatchObject(nftEvent);
+});
+
+test("getWatchedNFTEvents with no arguments", async () => {
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents();
+  expect(result).toBe("missing-arguments");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getWatchedNFTEvents with valid arguments but no events", async () => {
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getWatchedNFTEvents with valid arguments but a date after any events have been created", async () => {
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent({
+      transactionHash: transactionHash1,
+      eventType: "acceptOffer",
+    });
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject({
+    transactionHash: transactionHash1,
+  });
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents({
+    createdAt: new Date(),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents).toMatchObject([]);
+});
+
+test("getWatchedNFTEvents with valid arguments and a matching event but no watchers", async () => {
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent({
+      transactionHash: transactionHash1,
+      eventType: "acceptOffer",
+    });
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject({
+    transactionHash: transactionHash1,
+  });
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents[0]).toMatchObject(nftEvent);
+});
+
+test("getWatchedNFTEvents with valid arguments and a matching event with watchers", async () => {
+  const { object: user } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  const buyer = "0xc02a7141ede836cc24195a56e9a427ed8e9d5992";
+  const seller = "0x594c6b641626f4ad29aa2bdd046d7ba678f1b7ce";
+  await dbClient.createAlert({
+    userId: user.id,
+    type: "wallet",
+    address: buyer,
+  });
+  const nftEventParams = {
+    transactionHash: transactionHash1,
+    eventType: "acceptOffer",
+    tokenId: "4552",
+    collection: collection1,
+    initiator: seller,
+    buyer,
+    seller,
+    gas: 277210,
+    metadataUri: "ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq/4552",
+    standard: "ERC-721",
+    price: 93.5,
+  };
+  const { result: addNftEventResult, object: nftEvent } =
+    await dbClient.addNFTEvent(nftEventParams);
+  expect(addNftEventResult).toBe("success");
+  expect(nftEvent).toMatchObject(nftEventParams);
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents[0]).toMatchObject({
+    ...nftEvent,
+    watchers: [
+      {
+        discordId: discordId1,
+        type: "wallet",
+        address: buyer,
+      },
+    ],
+  });
+});
+
+test("getWatchedNFTEvents with two watchers for the same collection address", async () => {
+  const { object: user1 } = await dbClient.createUser({
+    discordId: discordId1,
+  });
+  const { object: user2 } = await dbClient.createUser({
+    discordId: discordId2,
+  });
+  const buyer = "0xc02a7141ede836cc24195a56e9a427ed8e9d5992";
+  const seller = "0x594c6b641626f4ad29aa2bdd046d7ba678f1b7ce";
+  await dbClient.createAlert({
+    userId: user1.id,
+    type: "collection",
+    address: collection1,
+  });
+  await dbClient.createAlert({
+    userId: user2.id,
+    type: "collection",
+    address: collection1,
+  });
+  const nftEventParams = {
+    transactionHash: transactionHash1,
+    eventType: "acceptOffer",
+    tokenId: "4552",
+    collection: collection1,
+    initiator: seller,
+    buyer,
+    seller,
+    gas: 277210,
+    metadataUri: "ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq/4552",
+    standard: "ERC-721",
+    price: 93.5,
+  };
+  const { object: nftEvent } = await dbClient.addNFTEvent(nftEventParams);
+  const { result, objects: nftEvents } = await dbClient.getWatchedNFTEvents({
+    createdAt: minutesAgo(1),
+  });
+  expect(result).toBe("success");
+  expect(nftEvents[0]).toMatchObject({
+    ...nftEvent,
+    watchers: [
+      {
+        discordId: discordId1,
+        type: "collection",
+        address: collection1,
+      },
+      {
+        discordId: discordId2,
+        type: "collection",
+        address: collection1,
+      },
+    ],
   });
 });

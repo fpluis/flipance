@@ -14,6 +14,10 @@ const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
+const allBlockchainIds = [{ id: "ethereum" }].map(({ id }) => id);
+const allStandardIds = [{ id: "ERC-721" }, { id: "ERC-1155" }].map(
+  ({ id }) => id
+);
 
 const {
   DB_HOSTNAME,
@@ -144,7 +148,7 @@ const createTableQueries = [
     nickname VARCHAR(${MAX_NICKNAME_LENGTH}),\
     UNIQUE (user_id, nickname),\
     UNIQUE (user_id, address),\
-    address VARCHAR(100) NOT NULL,\
+    address CHAR(42) NOT NULL,\
     tokens TEXT [],\
     created_at TIMESTAMPTZ NOT NULL,\
     synced_at TIMESTAMPTZ NOT NULL,\
@@ -155,21 +159,54 @@ const createTableQueries = [
         REFERENCES users (id)\
   );`,
   `CREATE TABLE IF NOT EXISTS offers (\
-    collection VARCHAR(100) NOT NULL,\
+    collection CHAR(42) NOT NULL,\
     token_id VARCHAR(100),\
     PRIMARY KEY (collection, token_id),\
     created_at TIMESTAMPTZ NOT NULL,\
     ends_at TIMESTAMPTZ NOT NULL,\
-    marketplace TEXT NOT NULL,\
+    marketplace VARCHAR(16),\
     price DOUBLE PRECISION NOT NULL\
   );`,
   `CREATE TABLE IF NOT EXISTS floor_prices (\
-    collection VARCHAR(100) NOT NULL,\
+    collection CHAR(42) NOT NULL,\
     created_at TIMESTAMPTZ NOT NULL,\
     ends_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
-    marketplace TEXT NOT NULL,\
+    marketplace VARCHAR(16),\
     price DOUBLE PRECISION NOT NULL\
+  );`,
+  `CREATE TABLE IF NOT EXISTS pagination (\
+    collection CHAR(42) NOT NULL,\
+    PRIMARY KEY (collection),\
+    lr_listing_timestamp TIMESTAMPTZ,\
+    lr_listing_last_hash TEXT,\
+    lr_offer_timestamp TIMESTAMPTZ,\
+    lr_offer_last_hash TEXT
+  );`,
+  `CREATE TABLE IF NOT EXISTS nft_events (\
+    id serial PRIMARY KEY,\
+    hash TEXT NOT NULL,\
+    created_at TIMESTAMPTZ NOT NULL,\
+    starts_at TIMESTAMPTZ,\
+    ends_at TIMESTAMPTZ,\
+    token_id VARCHAR(100),\
+    event_type SMALLINT,\
+    blockchain SMALLINT NOT NULL,\
+    marketplace SMALLINT,\
+    UNIQUE (blockchain, hash, event_type, collection, token_id, buyer, seller),\
+    collection CHAR(42),\
+    initiator CHAR(42),\
+    buyer CHAR(42),\
+    seller CHAR(42),\
+    intermediary CHAR(42),\
+    gas INT,\
+    amount INT,\
+    metadata_uri TEXT,\
+    standard SMALLINT,\
+    is_highest_offer BOOLEAN,\
+    collection_floor DOUBLE PRECISION,\
+    floor_difference NUMERIC(10, 2),\
+    price DOUBLE PRECISION\
   );`,
 ];
 
@@ -245,7 +282,9 @@ export const clearDb = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  await client.query(`TRUNCATE settings, users, alerts, offers, floor_prices`);
+  await client.query(
+    `TRUNCATE settings, users, alerts, offers, floor_prices, nft_events`
+  );
   await client.release();
   return pool.end();
 };
@@ -287,13 +326,37 @@ export const removeDb = async ({
   return pool.end();
 };
 
+const serializeEventType = (eventType) =>
+  allEventIds.findIndex((type) => type === eventType);
+
+const deserializeEventType = (serializedEventType) =>
+  allEventIds[serializedEventType];
+
+const serializeMarketplace = (marketplaceId) =>
+  allMarketplaceIds.findIndex((id) => id === marketplaceId);
+
+const deserializeMarketplace = (serializedMarketplaceId) =>
+  allMarketplaceIds[serializedMarketplaceId];
+
+const serializeBlockchain = (blockchainId) =>
+  allBlockchainIds.findIndex((id) => id === blockchainId);
+
+const deserializeBlockchain = (serializedBlockchainId) =>
+  allBlockchainIds[serializedBlockchainId];
+
+const serializeStandard = (standardId) =>
+  allStandardIds.findIndex((id) => id === standardId);
+
+const deserializeStandard = (serializedStandardId) =>
+  allStandardIds[serializedStandardId];
+
 /**
  *
  * Maps a Settings object from the database to a JS object and sets some
  * settings to the global defaults if the object does not have them.
  * @param {Object} settings
  * @typedef {("rarible"|"foundation"|"x2y2"|"openSea"|"looksRare")} Marketplace - The list of ids can be found in data/marketplaces.json.
- * @typedef {("offer"|"placeBid"|"acceptOffer"|"acceptAsk"|"cancelOrder"|"createAuction"|"settleAuction")} NFTEvent - The list of ids can be found
+ * @typedef {("offer"|"placeBid"|"acceptOffer"|"acceptAsk"|"cancelOrder"|"createAuction"|"settleAuction")} EventType - The list of ids can be found
  * in data/nft-events.json.
  * @typedef {Object} Settings - The alert/user settings object used
  * to filter events depending on type, marketplace, price, etc.
@@ -301,7 +364,7 @@ export const removeDb = async ({
  * can have with respect to the collection's floor to notify the user/server.
  * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces
  * which the user/alert wants to watch.
- * @property {Array[NFTEvent]} allowedEvents - The list of NFT event types
+ * @property {Array[EventType]} allowedEvents - The list of NFT event types
  * which the user/alert wants to watch.
  * @property {Number} id - The settings's id in the database.
  * @return {Settings}
@@ -324,8 +387,13 @@ const toSettingsObject = (settings) => {
         ? Number(MAX_OFFER_FLOOR_DIFFERENCE)
         : max_offer_floor_difference,
     allowedMarketplaces:
-      allowed_marketplaces == null ? allMarketplaceIds : allowed_marketplaces,
-    allowedEvents: allowed_events == null ? allEventIds : allowed_events,
+      allowed_marketplaces == null
+        ? allMarketplaceIds
+        : allowed_marketplaces.map(deserializeMarketplace),
+    allowedEvents:
+      allowed_events == null
+        ? allEventIds
+        : allowed_events.map(deserializeEventType),
   };
 };
 
@@ -338,7 +406,7 @@ const toSettingsObject = (settings) => {
  * can have with respect to the collection's floor to notify the user/server.
  * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces
  * which the user wants to watch.
- * @property {Array[NFTEvent]} allowedEvents - The list of NFT event types
+ * @property {Array[EventType]} allowedEvents - The list of NFT event types
  * which the user wants to watch.
  * @property {Number} id - The user's id in the database.
  * @property {Number} settingsId - The user's settings id in the database.
@@ -379,7 +447,7 @@ const toUserObject = (user) => {
  * @property {Number} maxOfferFloorDifference - The max difference an offer
  * can have with respect to the collection's floor to create a notification.
  * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces which the alert wants to watch.
- * @property {Array[NFTEvent]} allowedEvents - The list of NFT event types which the alert wants to watch.
+ * @property {Array[EventType]} allowedEvents - The list of NFT event types which the alert wants to watch.
  * @property {Number} id - The alert's id in the database.
  * @property {Number} settingsId - The user's settings id in the database.
  * @property {String} userId - The id of this alert's creator.
@@ -432,14 +500,14 @@ const toAlertObject = (alert) => {
       alert_allowed_marketplaces == null
         ? user_allowed_marketplaces == null
           ? allMarketplaceIds
-          : user_allowed_marketplaces
-        : alert_allowed_marketplaces,
+          : user_allowed_marketplaces.map(deserializeMarketplace)
+        : alert_allowed_marketplaces.map(deserializeMarketplace),
     allowedEvents:
       alert_allowed_events == null
         ? user_allowed_events == null
           ? allEventIds
-          : user_allowed_events
-        : alert_allowed_events,
+          : user_allowed_events.map(deserializeEventType)
+        : alert_allowed_events.map(deserializeEventType),
   };
 };
 
@@ -466,10 +534,12 @@ const toOfferObject = (offer) => {
     token_id: tokenId,
     ends_at: endsAt,
     created_at: createdAt,
+    marketplace,
     ...props
   } = offer;
   return {
     ...props,
+    marketplace: deserializeMarketplace(marketplace),
     tokenId,
     endsAt,
     createdAt,
@@ -493,11 +563,126 @@ const toCollectionFloorObject = (collectionFloor) => {
     return null;
   }
 
-  const { created_at: createdAt, ends_at: endsAt, ...props } = collectionFloor;
+  const {
+    created_at: createdAt,
+    ends_at: endsAt,
+    marketplace,
+    ...props
+  } = collectionFloor;
   return {
     ...props,
+    marketplace: deserializeMarketplace(marketplace),
     endsAt,
     createdAt,
+  };
+};
+
+// /**
+//  *
+//  * Maps a Collection floor object from the database to a JS object.
+//  * @param {Object} pagination
+//  * @typedef {Object} Pagination - The floor information.
+//  * @property {Date} lrListingLastHash - The last listing hash that was polled from LooksRare.
+//  * @property {Date} lrOfferLastHash - The last offer hash that was polled from LooksRare.
+//  * @return {Pagination}
+//  */
+// const toPaginationObject = (collectionFloor) => {
+//   if (collectionFloor == null) {
+//     return null;
+//   }
+
+//   const {
+//     lr_listing_last_hash: lrListingLastHash,
+//     lr_offer_last_hash: lrOfferLastHash,
+//     ...props
+//   } = collectionFloor;
+//   return {
+//     ...props,
+//     lrListingLastHash,
+//     lrOfferLastHash,
+//   };
+// };
+
+/**
+ *
+ * Maps an NFT Event object from the database to a JS object.
+ * @param {Object} NFTEvent
+ * @typedef {"ethereum"} Blockchain - The blockchain where the event took place
+ * @typedef {"ERC-721"|"ERC-1155"} Standard - The NFT standard
+ * @typedef {Object} NFTEvent - The NFT Event object.
+ * @property {String|null} transactionHash - The transaction hash in the blockchain.
+ * @property {String|null} orderHash - The order hash in the marketplace where it originated.
+ * @property {Date} createdAt - The Date when the event was added to the database.
+ * @property {Date|null} startsAt - The Date when the event happened.
+ * @property {Date|null} endsAt - The Date when the event stops.
+ * @property {String|null} tokenId - The id of the token involved in the event. If it's a collection event (i.e. collection offer) or an event without token id (i.e. cancel order), it will will be an empty string.
+ * @property {EventType|null} eventType - The type of event. See data/nft-events.json for the complete list.
+ * @property {Blockchain|null} blockchain - The blockchain's id
+ * @property {Marketplace|null} marketplace - The id of the marketplace where this floor was detected.
+ * @property {String|null} collection - The collection's address.
+ * @property {String|null} initiator - The address of the tx's initiator.
+ * @property {String|null} buyer - The address that buys the NFT.
+ * @property {String|null} seller - The address that sells the NFT.
+ * @property {Number|null} gas - The gas consumed by the tx.
+ * @property {Number|null} amount - The number of NFTs transferred.
+ * @property {String|null} metadataUri - The metadata URI associated to the NFT.
+ * @property {Standard|null} standard - The metadata URI associated to the NFT.
+ * @property {Boolean|null} isHighestOffer - For offers, whether the offer is the highest offer at the time.
+ * @property {Number|null} collectionFloor - For offers and listings, the collection's floor at the time the order is made.
+ * @property {Number|null} floorDifference - For an offer and listing, its difference wrt the current floor as a percentage between 0 and 1. I.e. if the floor is 1 ETH and the offer is 0.8 ETH, the floorDifference = 0.2. Also accepts negative values: if the floor is 1 ETH and the listing is 4 ETH, the floorDifference = (1 - 4 / 1) = -3.
+ * @property {Number|null} price - The price in the blockchain's native token. If it's an offer, the offer price; if it's a sale, the sale price.
+ * @return {NFTEvent}
+ */
+const toNFTEventObject = (nftEvent) => {
+  if (nftEvent == null) {
+    return null;
+  }
+
+  const {
+    hash,
+    created_at: createdAt,
+    starts_at: startsAt,
+    ends_at: endsAt,
+    event_type,
+    marketplace,
+    blockchain,
+    standard,
+    token_id: tokenId,
+    metadata_uri: metadataUri,
+    is_highest_offer: isHighestOffer = false,
+    floor_difference: floorDifference,
+    collection_floor: collectionFloor,
+    ...props
+  } = nftEvent;
+  const eventType = deserializeEventType(event_type);
+  let transactionHash;
+  let orderHash;
+  if (["listing", "offer"].includes(eventType)) {
+    orderHash = hash;
+  } else {
+    transactionHash = hash;
+  }
+
+  if (props.watchers) {
+    props.watchers = props.watchers.map(toAlertObject);
+  }
+
+  return {
+    ...props,
+    transactionHash,
+    orderHash,
+    createdAt,
+    startsAt,
+    endsAt,
+    eventType,
+    marketplace: deserializeMarketplace(marketplace),
+    blockchain: deserializeBlockchain(blockchain),
+    standard: deserializeStandard(standard),
+    isHighestOffer,
+    floorDifference,
+    collectionFloor,
+    tokenId,
+    metadataUri,
   };
 };
 
@@ -837,6 +1022,34 @@ export const createDbClient = async ({
     };
   };
 
+  // /**
+  //  *
+  //  * Gets the alerts in the database that have an id that belongs to a shard client given its shard id and the total shards. Alerts are split among shards according to the modulo of their alert.id, just like Discord splits guilds among shards. Example: shard id = 1, total shards = 4 => this function will return ids 1, 5, 9, etc.
+  //  * @return {AlertsResponse}
+  //  */
+  // const getAlertsByShard = async ({ shardId, totalShards } = {}) => {
+  //   if (shardId == null || totalShards == null) {
+  //     return { result: "missing-arguments", objects: [] };
+  //   }
+
+  //   const { rows } = await client.query(
+  //     `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
+  //       LEFT JOIN users\
+  //       ON users.id = alerts.user_id\
+  //       LEFT JOIN settings AS alert_settings\
+  //       ON alert_settings.id = alerts.settings_id\
+  //       LEFT JOIN settings AS user_settings\
+  //       ON user_settings.id = (\
+  //         SELECT settings_id FROM users WHERE users.id = alerts.user_id)
+  //       WHERE MOD(alerts.id, $2) = $1`,
+  //     [shardId, totalShards]
+  //   );
+  //   return {
+  //     result: "success",
+  //     objects: rows.map((row) => toAlertObject(toUserObject(row))),
+  //   };
+  // };
+
   /**
    *
    * Gets all the alerts for the user with the provided discord id.
@@ -953,7 +1166,7 @@ export const createDbClient = async ({
    * @param {Object} params
    * @param {String} params.discordId (Required) The Discord id of the user
    * who wants to modify their own settings.
-   * @param {Array[NFTEvent]} params.allowedEvents (Required) The new allowed events.
+   * @param {Array[EventType]} params.allowedEvents (Required) The new allowed events.
    * @param {String} params.address (Optional) The address of the alert to edit.
    * If provided, the settings of the alert and NOT the user will be edited.
    * @param {String} params.nickname (Optional) The nickname of the alert to
@@ -971,7 +1184,7 @@ export const createDbClient = async ({
       return { result: "missing-arguments", object: null };
     }
 
-    const values = [discordId, allowedEvents];
+    const values = [discordId, allowedEvents.map(serializeEventType)];
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
     if (address != null) {
@@ -1024,7 +1237,7 @@ export const createDbClient = async ({
       return { result: "missing-arguments", object: null };
     }
 
-    const values = [discordId, allowedMarketplaces];
+    const values = [discordId, allowedMarketplaces.map(serializeMarketplace)];
     let condition =
       "id = (SELECT settings_id FROM users WHERE discord_id = $1)";
     if (address != null) {
@@ -1115,7 +1328,7 @@ export const createDbClient = async ({
       price,
       new Date(endsAt),
       new Date(),
-      marketplace,
+      serializeMarketplace(marketplace),
       "",
     ];
     return client
@@ -1194,7 +1407,7 @@ export const createDbClient = async ({
           collection.toLowerCase(),
           new Date(),
           price,
-          marketplace,
+          serializeMarketplace(marketplace),
           new Date(endsAt),
         ]
       )
@@ -1213,6 +1426,283 @@ export const createDbClient = async ({
         };
       });
   };
+
+  // const setCollectionPagination = ({ collection, lrListingLastHash } = {}) => {
+  //   if (collection == null || lrListingLastHash == null) {
+  //     return { result: "missing-arguments", object: null };
+  //   }
+
+  //   const values = [collection];
+  //   const props = ["collection"];
+  //   const optionalProps = [
+  //     { value: lrListingLastHash, name: "lr_listing_last_hash" },
+  //   ];
+  //   let updateQuery = "";
+  //   optionalProps.forEach(({ value, name }, index) => {
+  //     if (value != null) {
+  //       values.push(value);
+  //       props.push(name);
+  //       updateQuery = `${updateQuery} ${name} = $${index + 2}${
+  //         index < optionalProps.length - 1 ? "," : ""
+  //       }`;
+  //     }
+  //   });
+  //   const propsQuery = props.join(", ");
+  //   const valuesQuery = values.map((_, index) => `$${index + 1}`).join(", ");
+
+  //   return client
+  //     .query(
+  //       `INSERT INTO pagination (${propsQuery}) VALUES (${valuesQuery})
+  //     ON CONFLICT (collection)\
+  //     DO\
+  //       UPDATE SET ${updateQuery}\
+  //     RETURNING *`,
+  //       values
+  //     )
+  //     .then(({ rows }) => {
+  //       return {
+  //         result: rows.length > 0 ? "success" : "error",
+  //         object: toPaginationObject(rows[0]),
+  //       };
+  //     })
+  //     .catch((error) => {
+  //       console.log(`Error upserting the pagination object`);
+  //       const { constraint } = error;
+  //       return {
+  //         object: null,
+  //         result: constraint === "pagination_pkey" ? "already-exists" : "error",
+  //       };
+  //     });
+  // };
+
+  // const getCollectionsPagination = async () => {
+  //   const { rows } = await client.query(`SELECT * FROM pagination`);
+  //   return { result: "success", objects: rows.map(toPaginationObject) };
+  // };
+
+  /**
+   *
+   * Adds an NFT Event to the database. The only constraint is that there are no events with the same blockchain, hash, eventType, collection, tokenId, buyer and seller. Note that this constraint is so elaborate because a single transaction can buy a token and resell it, which counts as two separate events.
+   * @param {NFTEvent} nftEvent
+   * @typedef {Object} NFTEventResponse - The responses returned by database functions that affect NFT events.
+   * @property {NFTEventResultType} result - The query's result.
+   * @property {Array[NFTEventResponse]} object - The new NFT event.
+   * @return {NFTEventResponse}
+   */
+  const addNFTEvent = async (nftEvent = {}) => {
+    const {
+      transactionHash,
+      orderHash,
+      eventType,
+      startsAt,
+      endsAt,
+      tokenId,
+      blockchain = allBlockchainIds[0],
+      marketplace,
+      collection,
+      initiator,
+      intermediary,
+      buyer,
+      seller,
+      gas,
+      amount,
+      metadataUri,
+      standard = "ERC-721",
+      price,
+      isHighestOffer = false,
+      collectionFloor,
+      floorDifference,
+    } = nftEvent;
+    // At least one id is necessary to associate an alert to a user
+    if (
+      (transactionHash == null && orderHash == null) ||
+      (collection == null && eventType !== "cancelOrder") ||
+      eventType == null
+    ) {
+      return { result: "missing-arguments", object: null };
+    }
+
+    const hash = transactionHash || orderHash;
+    const values = [
+      hash,
+      new Date(),
+      serializeEventType(eventType),
+      serializeBlockchain(blockchain),
+      serializeMarketplace(marketplace),
+    ];
+    const props = [
+      "hash",
+      "created_at",
+      "event_type",
+      "blockchain",
+      "marketplace",
+    ];
+    const optionalProps = [
+      { value: startsAt, name: "starts_at" },
+      { value: endsAt, name: "ends_at" },
+      { value: tokenId, name: "token_id" },
+      {
+        value: collection ? collection.toLowerCase() : collection,
+        name: "collection",
+      },
+      {
+        value: initiator ? initiator.toLowerCase() : initiator,
+        name: "initiator",
+      },
+      { value: buyer ? buyer.toLowerCase() : buyer, name: "buyer" },
+      { value: seller ? seller.toLowerCase() : seller, name: "seller" },
+      { value: intermediary, name: "intermediary" },
+      { value: gas, name: "gas" },
+      { value: amount, name: "amount" },
+      {
+        value:
+          metadataUri == null
+            ? metadataUri
+            : // eslint-disable-next-line no-control-regex
+              metadataUri.replace(/\u0000/giu, ""),
+        name: "metadata_uri",
+      },
+      { value: serializeStandard(standard), name: "standard" },
+      { value: isHighestOffer, name: "is_highest_offer" },
+      {
+        value: collectionFloor === 0 ? null : collectionFloor,
+        name: "collection_floor",
+      },
+      {
+        value: collectionFloor === 0 ? null : floorDifference,
+        name: "floor_difference",
+      },
+      { value: price, name: "price" },
+    ];
+    optionalProps.forEach(({ value, name }) => {
+      if (value != null) {
+        values.push(value);
+        props.push(name);
+      }
+    });
+
+    const propsQuery = props.join(", ");
+    const valuesQuery = values.map((_, index) => `$${index + 1}`).join(", ");
+    return client
+      .query(
+        `INSERT INTO nft_events (${propsQuery}) VALUES (${valuesQuery}) RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        rows
+          .filter(
+            ({ event_type }) => deserializeEventType(event_type) === "offer"
+          )
+          .forEach((row) => {
+            console.log(`Offer event added to the DB: ${JSON.stringify(row)}`);
+          });
+        return {
+          result: rows.length > 0 ? "success" : "error",
+          object: toNFTEventObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        const { constraint } = error;
+        if (
+          constraint !==
+          "nft_events_blockchain_hash_event_type_collection_token_id_b_key"
+        ) {
+          console.log(
+            `Error creating NFT event with args ${JSON.stringify(nftEvent)}`
+          );
+          console.log(error);
+        }
+
+        return {
+          object: null,
+          result:
+            constraint ===
+            "nft_events_blockchain_hash_event_type_collection_token_id_b_key"
+              ? "already-exists"
+              : "error",
+        };
+      });
+  };
+
+  /**
+   *
+   * Get all the NFT events after the 'createdAt' Date.
+   * @param {Object} params
+   * @param {Date} params.createdAt - The Date after which to retrieve events.
+   * @typedef {Object} NFTEventsResponse - The responses returned by database functions that affect multiple NFT events.
+   * @property {NFTEventResultType} result - The query's result.
+   * @property {Array[NFTEventResponse]} objects - The new NFT events.
+   * @return {NFTEventsResponse}
+   */
+  const getNFTEvents = async ({ createdAt } = {}) => {
+    if (createdAt == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
+    const { rows } = await client.query(
+      `SELECT * FROM nft_events\
+      WHERE created_at >= $1\
+      ORDER BY created_at DESC`,
+      [createdAt]
+    );
+    return { result: "success", objects: rows.map(toNFTEventObject) };
+  };
+
+  /**
+   *
+   * Get all the NFT events after the 'createdAt' Date as well as the alerts currently watching any of the addresses involved.
+   * @param {Object} params
+   * @param {Date} params.createdAt - The Date after which to retrieve events.
+   * @param {Date} params.createdAt - The Date after which to retrieve events.
+   * @typedef {Object} NFTEventsResponse - The responses returned by database functions that affect multiple NFT events.
+   * @property {NFTEventResultType} result - The query's result.
+   * @property {Array[NFTEventResponse]} objects - The new NFT events.
+   * @return {NFTEventsResponse}
+   */
+  const getWatchedNFTEvents = ({ createdAt } = {}) => {
+    if (createdAt == null) {
+      return { result: "missing-arguments", objects: [] };
+    }
+
+    const buildWatcherObjectQuery = `json_build_object('alert_id', alerts.id, 'address', alerts.address, 'discord_id', users.discord_id, 'channel_id', alerts.channel_id, 'type', alerts.type, 'alert_max_offer_floor_difference', alert_settings.max_offer_floor_difference, 'alert_allowed_marketplaces', alert_settings.allowed_marketplaces, 'alert_allowed_events', alert_settings.allowed_events, 'user_max_offer_floor_difference', user_settings.max_offer_floor_difference, 'user_allowed_marketplaces', user_settings.allowed_marketplaces, 'user_allowed_events', user_settings.allowed_events)`;
+    return client
+      .query(
+        `SELECT nft_events.*, COALESCE(alerts.watchers, '[]') AS watchers\
+        FROM nft_events\
+        LEFT JOIN LATERAL(\
+          SELECT json_agg(${buildWatcherObjectQuery}) AS watchers\
+          FROM alerts\
+          LEFT JOIN users\
+            ON users.id = alerts.user_id\
+            LEFT JOIN settings AS alert_settings\
+            ON alert_settings.id = alerts.settings_id\
+            LEFT JOIN settings AS user_settings\
+            ON user_settings.id = (\
+              SELECT settings_id FROM users WHERE users.id = alerts.user_id)
+          WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection\
+        ) alerts ON true\
+        WHERE nft_events.created_at >= $1\
+        ORDER BY created_at DESC`,
+        [createdAt]
+      )
+      .then(({ rows }) => {
+        rows
+          .filter(({ event_type }) => event_type === "offer")
+          .forEach((event) => {
+            console.log(`Offer event pulled: ${JSON.stringify(event)}`);
+          });
+
+        return { result: "success", objects: rows.map(toNFTEventObject) };
+      })
+      .catch((error) => {
+        console.log(`Error getting watched NFT events:`);
+        console.log(error);
+        return { result: "error", objects: [] };
+      });
+  };
+
+  // ANY(ARRAY(nft_events.buyer, nft_events.seller, nft_events.collection))
+  // WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection)\
 
   /**
    *
@@ -1234,6 +1724,7 @@ export const createDbClient = async ({
     getAlertsByAddress,
     getAlertsByNickname,
     getAllAlerts,
+    // getAlertsByShard,
     getUserAlerts,
     setMaxFloorDifference,
     setAllowedEvents,
@@ -1243,6 +1734,11 @@ export const createDbClient = async ({
     setCollectionOffer,
     getCollectionFloor,
     setCollectionFloor,
+    // setCollectionPagination,
+    // getCollectionsPagination,
+    addNFTEvent,
+    getNFTEvents,
+    getWatchedNFTEvents,
     destroy,
   };
 };

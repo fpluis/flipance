@@ -9,16 +9,15 @@ import path from "path";
 import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
 import registerCommands from "../src/discord/register-commands.js";
+import minimist from "minimist";
 
 dotenv.config({ path: path.resolve(".env") });
 
 const { DISCORD_BOT_TOKEN, DISCORD_BOT_TOKEN_TEST } = process.env;
+const argv = minimist(process.argv.slice(2));
 
 const discordClient = new Client({ intents: [Intents.FLAGS.GUILDS] });
-const [, , testArg] = process.argv;
-discordClient.login(
-  testArg === "test" ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
-);
+discordClient.login(argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN);
 
 discordClient.on("ready", async () => {
   let index = 0;

@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { SlashCommandBuilder } from "@discordjs/builders";
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v9";
+import minimist from "minimist";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -20,7 +21,8 @@ const {
   DISCORD_BOT_TOKEN_TEST,
   MAX_NICKNAME_LENGTH = 50,
 } = process.env;
-const [, , testArg] = process.argv;
+
+const argv = minimist(process.argv.slice(2));
 
 const commands = [
   new SlashCommandBuilder()
@@ -146,12 +148,11 @@ const commands = [
 ].map((command) => command.toJSON());
 
 const rest = new REST({ version: "9" }).setToken(
-  testArg === "test" ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
+  argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
 );
 
 export default async (guildId) => {
-  const clientId =
-    testArg === "test" ? DISCORD_CLIENT_ID_TEST : DISCORD_CLIENT_ID;
+  const clientId = argv.test ? DISCORD_CLIENT_ID_TEST : DISCORD_CLIENT_ID;
   return rest
     .put(Routes.applicationGuildCommands(clientId, guildId), {
       body: commands,

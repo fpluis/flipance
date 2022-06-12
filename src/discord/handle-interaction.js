@@ -107,6 +107,7 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
   const tokens = [`${address}/`];
   const { result } = await dbClient.createAlert({
     userId: user.id,
+    discordId,
     channelId,
     type: "collection",
     address,
@@ -203,17 +204,11 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
  * Handle the /walletalert slash command. This function will check that the address and/or nickname are correct and that an alert with the same address/nickname for the user doesn't already exist.
  * @param  {Object} params
  * @param  {Object} clients.discordClient - The initialized discord client.
- * @param  {Object} clients.nftClient - The initialized NFT client.
  * @param  {Object} clients.dbClient - The initialized database client.
  * @param  {CommandInteraction} params.interaction - The user interaction.
  * @return {void}
  */
-const handleWalletAlert = async ({
-  dbClient,
-  discordClient,
-  nftClient,
-  interaction,
-}) => {
+const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
   const {
     user: { id: discordId },
   } = interaction;
@@ -258,12 +253,11 @@ const handleWalletAlert = async ({
     });
   }
 
-  const tokens = await nftClient.getAddressNFTs(address);
   const { result } = await dbClient.createAlert({
     userId: user.id,
     type: "wallet",
     address,
-    tokens,
+    tokens: [],
     nickname: nicknameOption ? nicknameOption.trim() : null,
   });
   switch (result) {
@@ -584,7 +578,7 @@ after attempting a database query.
 const handleUpdatePreferencesResponse = async (interaction, result, object) => {
   if (result === "success") {
     return interaction.editReply({
-      content: `Your preferences have been saved.\n\n${describeSettings(
+      content: `Your preferences have been saved. Note that you might still see events we had already queued up for you.\n\n${describeSettings(
         object
       )}`,
       ephemeral: true,
@@ -882,7 +876,6 @@ const handleSelectMenu = async (args) => {
  * Handle an interaction provided the necessary service clients.
  * @param  {Object} clients
  * @param  {Object} clients.discordClient - The initialized discord client.
- * @param  {Object} clients.nftClient - The initialized NFT client.
  * @param  {Object} clients.dbClient - The initialized database client.
  * @param  {CommandInteraction} interaction - The Discord interaction initiated by
  * the user.

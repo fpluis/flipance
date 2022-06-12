@@ -14,6 +14,9 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 
+const daysAgo = (days = 30) =>
+  new Date(new Date().setDate(new Date().getDate() - days));
+
 /**
  * Calls a LooksRare endpoint with a limited number of retries.
  * @param  {String} endpoint - The endpoint to call.
@@ -21,7 +24,7 @@ const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
  * the endpoint.
  * @return {Array} result - The result of the call.
  */
-const callLRWithRetries = (endpoint = "", retries = 1) =>
+const callLRWithRetries = (endpoint = "", retries = 3) =>
   fetch(endpoint)
     .then((res) => res.json())
     .then(async (response) => {
@@ -77,8 +80,7 @@ export const getCollectionOffers = ({ collection, first = 1 }) =>
  */
 export const getCollectionListings = ({
   collection,
-  maxAge = new Date("1970-01-01"),
-  maxListings = 450,
+  maxAge = daysAgo(1),
   currentListings = 0,
   first = 150,
   cursor = null,
@@ -89,25 +91,26 @@ export const getCollectionListings = ({
   }
 
   return callLRWithRetries(endpoint).then(async (listings) => {
-    const newerListings = listings.filter(
+    const listingsBelowMaxAge = listings.filter(
       ({ startTime }) => new Date(startTime * 1000).getTime() > maxAge
     );
-    if (
-      newerListings.length === first &&
-      currentListings + listings < maxListings
-    ) {
-      const lastListing = listings[listings.length - 1];
+    if (listingsBelowMaxAge.length > 0) {
+      const listingsByEarliestDate = listingsBelowMaxAge.sort(
+        ({ startTime: startTime1 }, { startTime: startTime2 }) =>
+          startTime2 - startTime1
+      );
+      const oldestListing =
+        listingsByEarliestDate[listingsByEarliestDate.length - 1];
       const otherListings = await getCollectionListings({
         collection,
         maxAge,
-        maxListings,
-        currentListings: currentListings + listings.length,
+        currentListings: currentListings + listingsBelowMaxAge.length,
         first,
-        cursor: lastListing.hash,
+        cursor: oldestListing.hash,
       });
-      return listings.concat(otherListings);
+      return listingsByEarliestDate.concat(otherListings);
     }
 
-    return listings;
+    return listingsBelowMaxAge;
   });
 };
