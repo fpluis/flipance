@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import path from "path";
 import dotenv from "dotenv";
 import postgre from "pg";
+import logMessage from "../log-message.js";
 
 const { Pool } = postgre;
 
@@ -26,8 +27,8 @@ const {
   DB_NAME,
   DB_PASSWORD = "",
   MAX_NICKNAME_LENGTH = 50,
-  DEFAULT_USER_ALARM_LIMIT = 3,
-  DEFAULT_SERVER_ALARM_LIMIT = 1,
+  DEFAULT_USER_ALERT_LIMIT = 3,
+  DEFAULT_SERVER_ALERT_LIMIT = 1,
   MAX_OFFER_FLOOR_DIFFERENCE = 15,
 } = process.env;
 
@@ -713,10 +714,12 @@ export const createDbClient = async ({
   });
 
   pool.on("error", (error) => {
-    console.error("Unexpected error on client", error);
+    console.error("Database client error", error);
+    logMessage(`Database client error`, "error", error);
   });
 
   const client = await pool.connect().catch((error) => {
+    logMessage(`Database client connection error`, "error", error);
     throw error;
   });
 
@@ -731,22 +734,33 @@ export const createDbClient = async ({
    * @property {User|null} object
    * @return {UserResponse}
    */
-  const getUserByDiscordId = async ({ discordId } = {}) => {
+  const getUserByDiscordId = ({ discordId } = {}) => {
     if (discordId == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const { rows } = await client.query(
-      `SELECT *, users.id AS id FROM users
+    return client
+      .query(
+        `SELECT *, users.id AS id FROM users
       LEFT JOIN settings\
       ON settings.id = users.settings_id\
       WHERE discord_id = $1`,
-      [discordId]
-    );
-    return {
-      result: rows.length > 0 ? "success" : "missing-user",
-      object: toUserObject(rows[0]),
-    };
+        [discordId]
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "missing-user",
+          object: toUserObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting user by discord id ${discordId}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -757,13 +771,13 @@ export const createDbClient = async ({
    * @param {("user"|"server")} params.type - The user's type.
    * @return {UserResponse}
    */
-  const createUser = async ({ discordId, type = "user" } = {}) => {
+  const createUser = ({ discordId, type = "user" } = {}) => {
     if (discordId == null) {
       return { result: "missing-arguments", object: null };
     }
 
     const alertLimit =
-      type === "user" ? DEFAULT_USER_ALARM_LIMIT : DEFAULT_SERVER_ALARM_LIMIT;
+      type === "user" ? DEFAULT_USER_ALERT_LIMIT : DEFAULT_SERVER_ALERT_LIMIT;
     const values = [discordId, alertLimit, new Date()];
     return client
       .query(
@@ -892,19 +906,34 @@ export const createDbClient = async ({
    * @param {String} params.nickname - (Required) The alert's nickname.
    * @return {AlertResponse}
    */
-  const setAlertNickname = async ({ discordId, address, nickname } = {}) => {
+  const setAlertNickname = ({ discordId, address, nickname } = {}) => {
     if (discordId == null || address == null || nickname == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const { rows } = await client.query(
-      `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
-      [discordId, address.toLowerCase(), nickname]
-    );
-    return {
-      result: rows.length > 0 ? "success" : "missing-alert",
-      object: toAlertObject(rows[0]),
-    };
+    return client
+      .query(
+        `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
+        [discordId, address.toLowerCase(), nickname]
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "missing-alert",
+          object: toAlertObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error setting an alert's nickname with args ${JSON.stringify({
+            discordId,
+            address,
+            nickname,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -916,7 +945,7 @@ export const createDbClient = async ({
    * @param {String} params.nickname - (Required) The alert's nickname. Either the address OR the nickname must be provided.
    * @return {AlertResponse}
    */
-  const deleteAlert = async ({ discordId, address, nickname } = {}) => {
+  const deleteAlert = ({ discordId, address, nickname } = {}) => {
     if (discordId == null || (address == null && nickname == null)) {
       return { result: "missing-arguments", object: null };
     }
@@ -931,14 +960,29 @@ export const createDbClient = async ({
       values = [discordId, address.toLowerCase()];
     }
 
-    const result = await client.query(
-      `DELETE from alerts WHERE user_id = (SELECT user_id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
-      values
-    );
-    return {
-      result: result.rowCount > 0 ? "success" : "missing-alert",
-      object: result.rows[0],
-    };
+    return client
+      .query(
+        `DELETE from alerts WHERE user_id = (SELECT user_id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "missing-alert",
+          object: toAlertObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error deleting alert with args ${JSON.stringify({
+            discordId,
+            address,
+            nickname,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   const alertSettingsSelectProps =
@@ -954,25 +998,35 @@ export const createDbClient = async ({
    * @property {Array[Alert]} objects - The new alerts.
    * @return {AlertsResponse}
    */
-  const getAlertsByAddress = async ({ address } = {}) => {
+  const getAlertsByAddress = ({ address } = {}) => {
     if (address == null) {
       return { result: "missing-arguments", objects: [] };
     }
 
-    const result = await client.query(
-      `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
-      LEFT JOIN settings AS alert_settings\
-      ON alert_settings.id = alerts.settings_id\
-      LEFT JOIN settings AS user_settings\
-      ON user_settings.id = (\
-        SELECT settings_id FROM users WHERE users.id = alerts.user_id)\
-      LEFT JOIN users\
-      ON users.id = alerts.user_id\
-      WHERE address = $1`,
-      [address.toLowerCase()]
-    );
-    const { rows } = result;
-    return { result: "success", objects: rows.map(toAlertObject) };
+    return client
+      .query(
+        `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
+        LEFT JOIN settings AS alert_settings\
+        ON alert_settings.id = alerts.settings_id\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.id = alerts.user_id)\
+        LEFT JOIN users\
+        ON users.id = alerts.user_id\
+        WHERE address = $1`,
+        [address.toLowerCase()]
+      )
+      .then(({ rows }) => {
+        return { result: "success", objects: rows.map(toAlertObject) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting alerts by address "${address}"`,
+          "error",
+          error
+        );
+        return { result: "error", objects: [] };
+      });
   };
 
   /**
@@ -983,22 +1037,36 @@ export const createDbClient = async ({
    * @param {String} params.nickname - (Required) The alert's nickname.
    * @return {AlertsResponse}
    */
-  const getAlertsByNickname = async ({ discordId, nickname } = {}) => {
+  const getAlertsByNickname = ({ discordId, nickname } = {}) => {
     if (discordId == null || nickname == null) {
       return { result: "missing-arguments", objects: [] };
     }
 
-    const { rows } = await client.query(
-      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
-      LEFT JOIN settings AS alert_settings\
-      ON alert_settings.id = alerts.settings_id\
-      LEFT JOIN settings AS user_settings\
-      ON user_settings.id = (\
-        SELECT settings_id FROM users WHERE users.discord_id = $2)\
-      WHERE nickname = $1 AND user_id = (SELECT id FROM users WHERE discord_id = $2)`,
-      [nickname, discordId]
-    );
-    return { result: "success", objects: rows.map(toAlertObject) };
+    return client
+      .query(
+        `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+        LEFT JOIN settings AS alert_settings\
+        ON alert_settings.id = alerts.settings_id\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.discord_id = $2)\
+        WHERE nickname = $1 AND user_id = (SELECT id FROM users WHERE discord_id = $2)`,
+        [nickname, discordId]
+      )
+      .then(({ rows }) => {
+        return { result: "success", objects: rows.map(toAlertObject) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting alerts by nickname with args ${JSON.stringify({
+            discordId,
+            nickname,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", objects: [] };
+      });
   };
 
   /**
@@ -1006,49 +1074,29 @@ export const createDbClient = async ({
    * Gets all the alerts in the database.
    * @return {AlertsResponse}
    */
-  const getAllAlerts = async () => {
-    const { rows } =
-      await client.query(`SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
+  const getAllAlerts = () => {
+    return client
+      .query(
+        `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
         LEFT JOIN users\
         ON users.id = alerts.user_id\
         LEFT JOIN settings AS alert_settings\
         ON alert_settings.id = alerts.settings_id\
         LEFT JOIN settings AS user_settings\
         ON user_settings.id = (\
-          SELECT settings_id FROM users WHERE users.id = alerts.user_id)`);
-    return {
-      result: "success",
-      objects: rows.map((row) => toAlertObject(toUserObject(row))),
-    };
+          SELECT settings_id FROM users WHERE users.id = alerts.user_id)`
+      )
+      .then(({ rows }) => {
+        return {
+          result: "success",
+          objects: rows.map((row) => toAlertObject(toUserObject(row))),
+        };
+      })
+      .catch((error) => {
+        logMessage(`Error getting all alerts`, "error", error);
+        return { result: "error", objects: [] };
+      });
   };
-
-  // /**
-  //  *
-  //  * Gets the alerts in the database that have an id that belongs to a shard client given its shard id and the total shards. Alerts are split among shards according to the modulo of their alert.id, just like Discord splits guilds among shards. Example: shard id = 1, total shards = 4 => this function will return ids 1, 5, 9, etc.
-  //  * @return {AlertsResponse}
-  //  */
-  // const getAlertsByShard = async ({ shardId, totalShards } = {}) => {
-  //   if (shardId == null || totalShards == null) {
-  //     return { result: "missing-arguments", objects: [] };
-  //   }
-
-  //   const { rows } = await client.query(
-  //     `SELECT *, alerts.id, users.discord_id AS discord_id, ${alertSettingsSelectProps} FROM alerts\
-  //       LEFT JOIN users\
-  //       ON users.id = alerts.user_id\
-  //       LEFT JOIN settings AS alert_settings\
-  //       ON alert_settings.id = alerts.settings_id\
-  //       LEFT JOIN settings AS user_settings\
-  //       ON user_settings.id = (\
-  //         SELECT settings_id FROM users WHERE users.id = alerts.user_id)
-  //       WHERE MOD(alerts.id, $2) = $1`,
-  //     [shardId, totalShards]
-  //   );
-  //   return {
-  //     result: "success",
-  //     objects: rows.map((row) => toAlertObject(toUserObject(row))),
-  //   };
-  // };
 
   /**
    *
@@ -1057,22 +1105,33 @@ export const createDbClient = async ({
    * @param {String} params.discordId - (Required) The user's discord id.
    * @return {AlertsResponse}
    */
-  const getUserAlerts = async ({ discordId } = {}) => {
+  const getUserAlerts = ({ discordId } = {}) => {
     if (discordId == null) {
       return { result: "missing-arguments", objects: [] };
     }
 
-    const { rows } = await client.query(
-      `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
+    return client
+      .query(
+        `SELECT *, alerts.id, ${alertSettingsSelectProps} FROM alerts\
       LEFT JOIN settings AS alert_settings\
       ON alert_settings.id = alerts.settings_id\
       LEFT JOIN settings AS user_settings\
       ON user_settings.id = (\
         SELECT settings_id FROM users WHERE users.discord_id = $1)
       WHERE user_id = (SELECT id FROM users WHERE discord_id = $1)`,
-      [discordId]
-    );
-    return { result: "success", objects: rows.map(toAlertObject) };
+        [discordId]
+      )
+      .then(({ rows }) => {
+        return { result: "success", objects: rows.map(toAlertObject) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting user alerts with discordId "${discordId}"`,
+          "error",
+          error
+        );
+        return { result: "error", objects: [] };
+      });
   };
 
   /**
@@ -1083,23 +1142,36 @@ export const createDbClient = async ({
    * @param {Array[String]} params.tokens - (Required) The new tokens that will completely overwrite the old ones.
    * @return {AlertResponse}
    */
-  const setAlertTokens = async ({ id, tokens } = {}) => {
+  const setAlertTokens = ({ id, tokens } = {}) => {
     if (id == null || tokens == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const result = await client.query(
-      `UPDATE alerts\
+    return client
+      .query(
+        `UPDATE alerts\
       SET tokens = $2, synced_at = $3\
       WHERE id = $1\
       RETURNING *`,
-      [id, tokens, new Date()]
-    );
-    const { rows } = result;
-    return {
-      result: rows.length > 0 ? "success" : "missing-alert",
-      object: toAlertObject(rows[0]),
-    };
+        [id, tokens, new Date()]
+      )
+      .then(({ rows }) => {
+        return {
+          result: rows.length > 0 ? "success" : "missing-alert",
+          object: toAlertObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error setting an alert's tokens with args ${JSON.stringify({
+            id,
+            tokens,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1121,7 +1193,7 @@ export const createDbClient = async ({
    * @property {Settings|null} object - The new settings.
    * @return {SettingsResponse} response
    */
-  const setMaxFloorDifference = async ({
+  const setMaxFloorDifference = ({
     discordId,
     address,
     nickname,
@@ -1144,20 +1216,35 @@ export const createDbClient = async ({
         "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
-    const response = await client.query(
-      `UPDATE settings SET max_offer_floor_difference = $2 WHERE ${condition} RETURNING *`,
-      values
-    );
-    const { rows } = response;
-    return {
-      result:
-        rows.length > 0
-          ? "success"
-          : address == null
-          ? "missing-user"
-          : "missing-alert",
-      object: toSettingsObject(rows[0]),
-    };
+    return client
+      .query(
+        `UPDATE settings SET max_offer_floor_difference = $2 WHERE ${condition} RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return {
+          result:
+            rows.length > 0
+              ? "success"
+              : address == null
+              ? "missing-user"
+              : "missing-alert",
+          object: toSettingsObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error setting max floor difference with args ${JSON.stringify({
+            discordId,
+            address,
+            nickname,
+            maxOfferFloorDifference,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1174,7 +1261,7 @@ export const createDbClient = async ({
    * be edited.
    * @return {SettingsResponse} response
    */
-  const setAllowedEvents = async ({
+  const setAllowedEvents = ({
     discordId,
     address,
     nickname,
@@ -1197,20 +1284,35 @@ export const createDbClient = async ({
         "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
-    const response = await client.query(
-      `UPDATE settings SET allowed_events = $2 WHERE ${condition} RETURNING *`,
-      values
-    );
-    const { rows } = response;
-    return {
-      result:
-        rows.length > 0
-          ? "success"
-          : address == null
-          ? "missing-user"
-          : "missing-alert",
-      object: toSettingsObject(rows[0]),
-    };
+    return client
+      .query(
+        `UPDATE settings SET allowed_events = $2 WHERE ${condition} RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return {
+          result:
+            rows.length > 0
+              ? "success"
+              : address == null
+              ? "missing-user"
+              : "missing-alert",
+          object: toSettingsObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error setting allowed events with args ${JSON.stringify({
+            discordId,
+            address,
+            nickname,
+            allowedEvents,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1227,7 +1329,7 @@ export const createDbClient = async ({
    * be edited.
    * @return {SettingsResponse} response
    */
-  const setAllowedMarketplaces = async ({
+  const setAllowedMarketplaces = ({
     discordId,
     address,
     nickname,
@@ -1250,20 +1352,35 @@ export const createDbClient = async ({
         "id = (SELECT settings_id FROM alerts WHERE nickname = $3 AND user_id = (SELECT id from users WHERE discord_id = $1))";
     }
 
-    const response = await client.query(
-      `UPDATE settings SET allowed_marketplaces = $2 WHERE ${condition} RETURNING *`,
-      values
-    );
-    const { rows } = response;
-    return {
-      result:
-        rows.length > 0
-          ? "success"
-          : address == null
-          ? "missing-user"
-          : "missing-alert",
-      object: toSettingsObject(rows[0]),
-    };
+    return client
+      .query(
+        `UPDATE settings SET allowed_marketplaces = $2 WHERE ${condition} RETURNING *`,
+        values
+      )
+      .then(({ rows }) => {
+        return {
+          result:
+            rows.length > 0
+              ? "success"
+              : address == null
+              ? "missing-user"
+              : "missing-alert",
+          object: toSettingsObject(rows[0]),
+        };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error setting allowed marketplaces with args ${JSON.stringify({
+            discordId,
+            address,
+            nickname,
+            allowedMarketplaces,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1275,10 +1392,19 @@ export const createDbClient = async ({
    * @property {Array[Offer]} objects - The new offers.
    * @return {OffersResponse} response
    */
-  const getAllCollectionOffers = async () => {
-    const { rows } = await client.query(`SELECT * FROM offers\
-    WHERE token_id = ''`);
-    return { result: "success", objects: rows.map(toOfferObject) };
+  const getAllCollectionOffers = () => {
+    return client
+      .query(
+        `SELECT * FROM offers\
+    WHERE token_id = ''`
+      )
+      .then(({ rows }) => {
+        return { result: "success", objects: rows.map(toOfferObject) };
+      })
+      .catch((error) => {
+        logMessage(`Error getting all collection offers`, "error", error);
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1292,17 +1418,30 @@ export const createDbClient = async ({
    * @property {CollectionFloor|null} object - The collection floor.
    * @return {CollectionFloorResponse} response
    */
-  const getCollectionOffer = async ({ collection } = {}) => {
+  const getCollectionOffer = ({ collection } = {}) => {
     if (collection == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const { rows } = await client.query(
-      `SELECT * FROM offers\
+    return client
+      .query(
+        `SELECT * FROM offers\
       WHERE collection = $1 AND token_id = $2`,
-      [collection.toLowerCase(), ""]
-    );
-    return { result: "success", object: toOfferObject(rows[0]) };
+        [collection.toLowerCase(), ""]
+      )
+      .then(({ rows }) => {
+        return { result: "success", object: toOfferObject(rows[0]) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting collection offer with args ${JSON.stringify({
+            collection,
+          })}`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1313,7 +1452,7 @@ export const createDbClient = async ({
    * @property {Offer|null} object - The new offer.
    * @return {OfferResponse} response
    */
-  const setCollectionOffer = async ({
+  const setCollectionOffer = ({
     collection,
     price,
     endsAt,
@@ -1349,6 +1488,19 @@ export const createDbClient = async ({
       })
       .catch((error) => {
         const { constraint } = error;
+        if (constraint !== "offers_pkey") {
+          logMessage(
+            `Error setting collection offer with args ${JSON.stringify({
+              collection,
+              price,
+              endsAt,
+              marketplace,
+            })}`,
+            "error",
+            error
+          );
+        }
+
         return {
           object: null,
           result: constraint === "offers_pkey" ? "already-exists" : "error",
@@ -1367,18 +1519,29 @@ export const createDbClient = async ({
    * @property {CollectionFloor|null} object - The collection floor.
    * @return {CollectionFloorResponse} response
    */
-  const getCollectionFloor = async ({ collection } = {}) => {
+  const getCollectionFloor = ({ collection } = {}) => {
     if (collection == null) {
       return { result: "missing-arguments", object: null };
     }
 
-    const { rows } = await client.query(
-      `SELECT * FROM floor_prices\
+    return client
+      .query(
+        `SELECT * FROM floor_prices\
       WHERE collection = $1\
       ORDER BY created_at DESC`,
-      [collection.toLowerCase()]
-    );
-    return { result: "success", object: toCollectionFloorObject(rows[0]) };
+        [collection.toLowerCase()]
+      )
+      .then(({ rows }) => {
+        return { result: "success", object: toCollectionFloorObject(rows[0]) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting collection floor of "${collection}"`,
+          "error",
+          error
+        );
+        return { result: "error", object: null };
+      });
   };
 
   /**
@@ -1419,6 +1582,19 @@ export const createDbClient = async ({
       })
       .catch((error) => {
         const { constraint } = error;
+        if (constraint !== "floor_prices_pkey") {
+          logMessage(
+            `Error setting collection floor with args ${JSON.stringify({
+              collection,
+              price,
+              endsAt,
+              marketplace,
+            })}`,
+            "error",
+            error
+          );
+        }
+
         return {
           object: null,
           result:
@@ -1426,59 +1602,6 @@ export const createDbClient = async ({
         };
       });
   };
-
-  // const setCollectionPagination = ({ collection, lrListingLastHash } = {}) => {
-  //   if (collection == null || lrListingLastHash == null) {
-  //     return { result: "missing-arguments", object: null };
-  //   }
-
-  //   const values = [collection];
-  //   const props = ["collection"];
-  //   const optionalProps = [
-  //     { value: lrListingLastHash, name: "lr_listing_last_hash" },
-  //   ];
-  //   let updateQuery = "";
-  //   optionalProps.forEach(({ value, name }, index) => {
-  //     if (value != null) {
-  //       values.push(value);
-  //       props.push(name);
-  //       updateQuery = `${updateQuery} ${name} = $${index + 2}${
-  //         index < optionalProps.length - 1 ? "," : ""
-  //       }`;
-  //     }
-  //   });
-  //   const propsQuery = props.join(", ");
-  //   const valuesQuery = values.map((_, index) => `$${index + 1}`).join(", ");
-
-  //   return client
-  //     .query(
-  //       `INSERT INTO pagination (${propsQuery}) VALUES (${valuesQuery})
-  //     ON CONFLICT (collection)\
-  //     DO\
-  //       UPDATE SET ${updateQuery}\
-  //     RETURNING *`,
-  //       values
-  //     )
-  //     .then(({ rows }) => {
-  //       return {
-  //         result: rows.length > 0 ? "success" : "error",
-  //         object: toPaginationObject(rows[0]),
-  //       };
-  //     })
-  //     .catch((error) => {
-  //       console.log(`Error upserting the pagination object`);
-  //       const { constraint } = error;
-  //       return {
-  //         object: null,
-  //         result: constraint === "pagination_pkey" ? "already-exists" : "error",
-  //       };
-  //     });
-  // };
-
-  // const getCollectionsPagination = async () => {
-  //   const { rows } = await client.query(`SELECT * FROM pagination`);
-  //   return { result: "success", objects: rows.map(toPaginationObject) };
-  // };
 
   /**
    *
@@ -1489,7 +1612,7 @@ export const createDbClient = async ({
    * @property {Array[NFTEventResponse]} object - The new NFT event.
    * @return {NFTEventResponse}
    */
-  const addNFTEvent = async (nftEvent = {}) => {
+  const addNFTEvent = (nftEvent = {}) => {
     const {
       transactionHash,
       orderHash,
@@ -1610,10 +1733,12 @@ export const createDbClient = async ({
           constraint !==
           "nft_events_blockchain_hash_event_type_collection_token_id_b_key"
         ) {
-          console.log(
-            `Error creating NFT event with args ${JSON.stringify(nftEvent)}`
+          logMessage(
+            `Error creating NFT event with args ${JSON.stringify(nftEvent)}`,
+            "error",
+            error
           );
-          console.log(error);
+          return { result: "error", objects: [] };
         }
 
         return {
@@ -1637,18 +1762,29 @@ export const createDbClient = async ({
    * @property {Array[NFTEventResponse]} objects - The new NFT events.
    * @return {NFTEventsResponse}
    */
-  const getNFTEvents = async ({ createdAt } = {}) => {
+  const getNFTEvents = ({ createdAt } = {}) => {
     if (createdAt == null) {
       return { result: "missing-arguments", objects: [] };
     }
 
-    const { rows } = await client.query(
-      `SELECT * FROM nft_events\
-      WHERE created_at >= $1\
-      ORDER BY created_at DESC`,
-      [createdAt]
-    );
-    return { result: "success", objects: rows.map(toNFTEventObject) };
+    return client
+      .query(
+        `SELECT * FROM nft_events\
+        WHERE created_at >= $1\
+        ORDER BY created_at DESC`,
+        [createdAt]
+      )
+      .then(({ rows }) => {
+        return { result: "success", objects: rows.map(toNFTEventObject) };
+      })
+      .catch((error) => {
+        logMessage(
+          `Error getting NFT events since ${createdAt}`,
+          "error",
+          error
+        );
+        return { result: "error", objects: [] };
+      });
   };
 
   /**
@@ -1698,14 +1834,14 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toNFTEventObject) };
       })
       .catch((error) => {
-        console.log(`Error getting watched NFT events:`);
-        console.log(error);
+        logMessage(
+          `Error getting watched NFT events since ${createdAt}`,
+          "error",
+          error
+        );
         return { result: "error", objects: [] };
       });
   };
-
-  // ANY(ARRAY(nft_events.buyer, nft_events.seller, nft_events.collection))
-  // WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection)\
 
   /**
    *
@@ -1727,7 +1863,6 @@ export const createDbClient = async ({
     getAlertsByAddress,
     getAlertsByNickname,
     getAllAlerts,
-    // getAlertsByShard,
     getUserAlerts,
     setMaxFloorDifference,
     setAllowedEvents,
@@ -1737,8 +1872,6 @@ export const createDbClient = async ({
     setCollectionOffer,
     getCollectionFloor,
     setCollectionFloor,
-    // setCollectionPagination,
-    // getCollectionsPagination,
     addNFTEvent,
     getNFTEvents,
     getWatchedNFTEvents,

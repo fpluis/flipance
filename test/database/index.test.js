@@ -1029,6 +1029,7 @@ test("getNFTEvents with valid arguments but a date after any events have been cr
   const { result: addNftEventResult, object: nftEvent } =
     await dbClient.addNFTEvent({
       transactionHash: transactionHash1,
+      collection: collection1,
       eventType: "acceptOffer",
     });
   expect(addNftEventResult).toBe("success");
@@ -1046,6 +1047,7 @@ test("getNFTEvents with valid arguments and a matching event", async () => {
   const { result: addNftEventResult, object: nftEvent } =
     await dbClient.addNFTEvent({
       transactionHash: transactionHash1,
+      collection: collection1,
       eventType: "acceptOffer",
     });
   expect(addNftEventResult).toBe("success");
@@ -1104,6 +1106,7 @@ test("getWatchedNFTEvents with valid arguments but a date after any events have 
   const { result: addNftEventResult, object: nftEvent } =
     await dbClient.addNFTEvent({
       transactionHash: transactionHash1,
+      collection: collection1,
       eventType: "acceptOffer",
     });
   expect(addNftEventResult).toBe("success");
@@ -1121,6 +1124,7 @@ test("getWatchedNFTEvents with valid arguments and a matching event but no watch
   const { result: addNftEventResult, object: nftEvent } =
     await dbClient.addNFTEvent({
       transactionHash: transactionHash1,
+      collection: collection1,
       eventType: "acceptOffer",
     });
   expect(addNftEventResult).toBe("success");
