@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import fetch from "node-fetch";
 import moralisClient from "moralis/node.js";
 import logMessage from "../log-message.js";
+import { createAlchemyWeb3 } from "@alch/alchemy-web3";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -17,6 +18,7 @@ const {
   MORALIS_SERVER_URL,
   MORALIS_APP_ID,
   MORALIS_MASTER_KEY,
+  ALCHEMY_API_KEY,
 } = process.env;
 
 /* NFTScan requires a token to call its API. The purpose
@@ -101,6 +103,7 @@ const getNFTScanNFTs = async (address) => {
 };
 
 export default async () => {
+  let usingMoralis = true;
   await moralisClient
     .start({
       serverUrl: MORALIS_SERVER_URL,
@@ -109,7 +112,27 @@ export default async () => {
     })
     .catch(() => {
       console.log(`Invalid/missing Moralis credentials. Starting without it`);
+      usingMoralis = false;
     });
+
+  const alchemyClient = createAlchemyWeb3(
+    `https://eth-mainnet.alchemyapi.io/nft/v2/${ALCHEMY_API_KEY}`
+  );
+
+  const getAlchemyNFTs = (address) =>
+    alchemyClient.alchemy
+      .getNfts({
+        owner: address,
+      })
+      .then(({ ownedNfts }) => {
+        return ownedNfts.map(
+          ({ contract: { address }, id: { tokenId } }) =>
+            `${address}/${parseInt(tokenId, 16)}`
+        );
+      })
+      .catch(() => {
+        return [];
+      });
 
   /**
    * Get the NFTs owned by an ETH account
@@ -127,7 +150,13 @@ export default async () => {
             ({ token_address, token_id }) => `${token_address}/${token_id}`
           );
         })
-        .catch(() => getNFTScanNFTs(address));
+        .catch(() => {
+          if (NFT_SCAN_API_ID && NFT_SCAN_SECRET) {
+            return getNFTScanNFTs(address).catch(() => getAlchemyNFTs(address));
+          }
+
+          return getAlchemyNFTs(address);
+        });
     } catch (error) {
       logMessage(
         `Error fetching NFTs for address ${address}`,
@@ -139,7 +168,7 @@ export default async () => {
   };
 
   const destroy = () => {
-    return moralisClient.deactivateWeb3();
+    return usingMoralis ? moralisClient.deactivateWeb3() : Promise.resolve();
   };
 
   return {
