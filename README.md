@@ -154,11 +154,12 @@ Next we'll go over what you need to get your own bot up and running.
 
 To host your own bot you will need to sign up to some API service providers. All the APIs listed here offer at least a free tier that will be enough to run the bot:
 - [Discord](https://discord.com/register): Necessary to create a Discord bot.
-- Ethereum RPC connection services. You need at least Etherscan and one or more of the other providers listed here:
+- Ethereum RPC connection services. You can use Alchemy's API key for all ethereum requests. However, consider adding some of the other RPC providers to raise the bot's rate limits and for fault tolerance.
   1) [Etherscan](https://etherscan.io/register)
   2) [Infura](https://infura.io/register)
   3) [Pocket](https://mainnet.portal.pokt.network/#/signup)
-- NFT APIs. We currently support two. If you use both, the bot will be able to pull more information.
+  4) [Alchemy](https://www.alchemy.com/)
+- NFT APIs: Both are optional. You can provide only the Alchemy API key. We currently support two. If you use both, the bot will be able to pull more information.
   1) [Moralis](https://admin.moralis.io/register).
   2) [NFTScan](https://developer.nftscan.com/user/regist)
 
@@ -200,7 +201,7 @@ To start the bot and begin handling requests, you will need to install the follo
 - [Node.js](https://nodejs.org/en/): We recommend version 16 or later.
 - [PostgreSql](https://www.postgresql.org/).
 
-Once you set up PostgreSql, you will need to either create a user specifically for the bot or use the default admin. In either case, you must set the DB_USERNAME and DB_PASSWORD to a valid PostgreSql user.
+Once you set up PostgreSql, you will need to either create a user specifically for the bot or use the default admin. In either case, you must set the POSTGRES_USERNAME and POSTGRES_PASSWORD to a valid PostgreSql user.
 
 The bot script relies on environment variables. You can either set these at the system-level, or create a *.env* file at the project's root where you set the secrets using the same format as in the .tfvars files. You can see an example of what variables and what values to set in the file *example.env*.
 
@@ -209,20 +210,29 @@ Once you have set up the tools and environment, you will need to create the DB b
 npm run setup-db
 ```
 
-NOTE: This script will erase and overwrite whatever database already exists with the name DB_NAME, so be careful when running it.
+To run the bot manually you will need two 
 
-To start the bot, run the command
 ```
 npm run start
 ```
 
 ## Bot Configuration
 
-Apart from which service providers you use, there are some global settings you can modify as environment variables either in a .env file or the terraform variables:
+Necessary environment variables:
+- **ALCHEMY_API_KEY**: "YOUR_ALCHEMY_API_KEY"
+- **DISCORD_CLIENT_ID**: "YOUR_DISCORD_CLIENT_ID"
+- **DISCORD_BOT_TOKEN**: YOUR_DISCORD_BOT_TOKEN
+- **DB_HOSTNAME**: localhost (manual deployment), flipance (kubernetes deployment) or an IP address where a postgresql server is hosted.
+- **POSTGRES_PASSWORD**: 1234
+- **POSTGRES_USERNAME**: postgres
+
+Apart from the necessary configuration variables, there are some global settings you can modify as environment variables either in a .env file or the terraform variables:
 - **MAX_NICKNAME_LENGTH**: Max. length in characters that alert nicknames can have.
 - **MAX_OFFER_FLOOR_DIFFERENCE**: Default max. difference as a percentage between the floor and the offer for all alerts.
 - **DEFAULT_USER_ALERT_LIMIT**: Default max number of alerts a user can have.
 - **DEFAULT_SERVER_ALERT_LIMIT**: Default max number of alerts a server can have.
+- **MARKETPLACES**: Comma-separated list of marketplaces you want the bot to poll for events. Default (all marketplaces): looksRare,openSea,x2y2,foundation,rarible.
+- **ETHEREUM_NETWORK**: The ethereum network the bot will connect to. Currently supported values are _homestead_ (the default) and _rinkeby_. Only LooksRare trades are tracked on the Rinkeby testnet.
 
 # Permissions
 
@@ -279,6 +289,41 @@ Protecting API keys and secrets is crucial. If you deploy the bot to your own in
 
 If you use the terraform deployment, you will notice that it uses the [AWS System Manager Parameter Store](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-parameter-store.html). The EC2 instance where the bot runs is assigned a role that can access these permissions. If you grant someone access to the EC2 instance, that person will be able to request the secret keys using the bot's credentials.
 
+# Kubernetes configuration
+
+The bot is split into services and ready to run as a Kubernetes cluster. You can find the Kubernetes configuration at the services folder. There are 4 Kubernetes deployments described there:
+
+- **autoscaler**: The script that polls Discord for information about the recommended shards and modifies the Kubernetes configuration to add/remove shard instances.
+- **crawler**: The script that listens to new on-chain events and saves them to the database.
+- **postgres**: The PostgreSQL database image. You can use your own hosted database instead if you set the *DB_HOSTNAME* env variable to your database's IP.
+- **shard**: The Discord client shard that polls the database for new events and notifies the users and servers assigned to it when the event is relevant to the user/server.
+
+Coordination is centralized on the database: the autoscaler service sets the shard id and total shard count, and each shard instance polls the database to get its shard configuration. If it detects a change, the discord client reconnects.
+
+You need to either set the secrets to the Kubernetes cluster manually or add a secret.yaml file at the services/ folder with the environment variables using the following structure:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  namespace: flipance
+  name: flipance-secrets
+type: Opaque
+stringData:
+  ALCHEMY_API_KEY: YOUR_ALCHEMY_API_KEY
+  DISCORD_CLIENT_ID: "YOUR_DISCORD_CLIENT_ID"
+```
+
+To set up the Kubernetes cluster, run the following commands:
+
+```
+kubectl apply -f services
+kubectl apply -f services/postgres
+kubectl apply -f services/crawler
+kubectl apply -f services/shard
+kubectl apply -f services/autoscaler
+```
+
 # Project structure
 
 If you want to contribute, this section will help you understand how the code is structured by looking at what there is in each folder.
@@ -296,6 +341,12 @@ The rest of the files in this folder are more or less generic purpose or at leas
 ## test
 
 Tests for each module, written using jest. The file structure should mirror the structure of the _src_ folder.
+
+## services
+
+The Kubernetes services needed to run the cluster, with the structure outlined in the [Kubernetes configuration](#kubernetes-configuration) section.
+
+Each service has a Dockerfile that defines the service's image and a Kubernetes deployment file.
 
 ## scripts
 
