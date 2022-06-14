@@ -180,7 +180,7 @@ const createTableQueries = [
     shard_id SMALLINT NOT NULL,\
     instance_name TEXT NOT NULL,\
     total_shards SMALLINT NOT NULL,\
-    PRIMARY KEY (shard_id),\
+    PRIMARY KEY (instance_name)\
   );`,
   `CREATE TABLE IF NOT EXISTS nft_events (\
     id serial PRIMARY KEY,\
@@ -243,7 +243,13 @@ export const setUpDb = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  await Promise.all(createTableQueries.map((query) => client.query(query)));
+  await Promise.all(
+    createTableQueries.map((query) =>
+      client.query(query).catch((error) => {
+        console.log(`Error handling query "${query}":`, error);
+      })
+    )
+  );
   await client.release();
   return pool.end();
 };
@@ -320,7 +326,9 @@ export const removeDb = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  await client.query(`DROP DATABASE "${dbName}"`);
+  await client.query(`DROP DATABASE "${dbName}"`).catch((error) => {
+    console.log(`Error dropping db`, error);
+  });
   await client.release();
   return pool.end();
 };
@@ -1716,13 +1724,6 @@ export const createDbClient = async ({
         values
       )
       .then(({ rows }) => {
-        rows
-          .filter(
-            ({ event_type }) => deserializeEventType(event_type) === "offer"
-          )
-          .forEach((row) => {
-            console.log(`Offer event added to the DB: ${JSON.stringify(row)}`);
-          });
         return {
           result: rows.length > 0 ? "success" : "error",
           object: toNFTEventObject(rows[0]),
@@ -1826,12 +1827,6 @@ export const createDbClient = async ({
         [createdAt]
       )
       .then(({ rows }) => {
-        rows
-          .filter(({ event_type }) => event_type === "offer")
-          .forEach((event) => {
-            console.log(`Offer event pulled: ${JSON.stringify(event)}`);
-          });
-
         return { result: "success", objects: rows.map(toNFTEventObject) };
       })
       .catch((error) => {
@@ -1853,7 +1848,7 @@ export const createDbClient = async ({
       .query(
         `INSERT INTO sharding_info (shard_id, instance_name, total_shards)\
       VALUES($1, $2, $3)\
-      ON CONFLICT (shard_id)\
+      ON CONFLICT (instance_name)\
       DO\
         UPDATE SET shard_id = $1, instance_name = $2, total_shards = $3\
       RETURNING *`,
