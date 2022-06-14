@@ -25,7 +25,7 @@ spec:
                 name: flipance-secrets
           resources:
             limits:
-              memory: "512Mi"
+              memory: "1024Mi"
               cpu: "500m"
           ports:
             - containerPort: 5432
