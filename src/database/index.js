@@ -23,9 +23,9 @@ const allStandardIds = [{ id: "ERC-721" }, { id: "ERC-1155" }].map(
 const {
   DB_HOSTNAME,
   DB_PORT,
-  DB_USERNAME,
+  POSTGRES_USERNAME,
   DB_NAME,
-  DB_PASSWORD = "",
+  POSTGRES_PASSWORD = "",
   MAX_NICKNAME_LENGTH = 50,
   DEFAULT_USER_ALERT_LIMIT = 3,
   DEFAULT_SERVER_ALERT_LIMIT = 1,
@@ -46,8 +46,8 @@ const {
 export const isDbCreated = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   const pool = new Pool({
@@ -92,8 +92,8 @@ export const isDbCreated = async ({
 export const createDb = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   const dbExists = await isDbCreated({ host, port, user, password, dbName });
@@ -223,8 +223,8 @@ const createTableQueries = [
 export const setUpDb = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   console.log(`Set up DB`);
@@ -268,8 +268,8 @@ export const setUpDb = async ({
 export const clearDb = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   const pool = new Pool({
@@ -308,8 +308,8 @@ export const clearDb = async ({
 export const removeDb = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   const pool = new Pool({
@@ -710,8 +710,8 @@ const toNFTEventObject = (nftEvent) => {
 export const createDbClient = async ({
   host = DB_HOSTNAME,
   port = DB_PORT,
-  user = DB_USERNAME,
-  password = DB_PASSWORD,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
   const pool = new Pool({

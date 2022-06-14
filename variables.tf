@@ -128,13 +128,13 @@ variable "DB_PORT" {
   default     = "5432"
 }
 
-variable "DB_USERNAME" {
+variable "POSTGRES_USERNAME" {
   type        = string
   description = "Username for the PostgreSQL database."
   default     = "user"
 }
 
-variable "DB_PASSWORD" {
+variable "POSTGRES_PASSWORD" {
   type        = string
   description = "Password for the PostgreSQL database."
   sensitive   = true

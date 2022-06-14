@@ -36,7 +36,7 @@ echo "Env loaded"
 
 echo "DB_HOSTNAME=${DB_HOSTNAME}" | sudo tee -a /etc/environment
 echo "DB_PORT=${DB_PORT}" | sudo tee -a /etc/environment
-echo "DB_USERNAME=${DB_USERNAME}" | sudo tee -a /etc/environment
+echo "POSTGRES_USERNAME=${POSTGRES_USERNAME}" | sudo tee -a /etc/environment
 echo "DB_NAME=${DB_NAME}" | sudo tee -a /etc/environment
 echo "MAX_NICKNAME_LENGTH=${MAX_NICKNAME_LENGTH}" | sudo tee -a /etc/environment
 echo "MAX_OFFER_FLOOR_DIFFERENCE=${MAX_OFFER_FLOOR_DIFFERENCE}" | sudo tee -a /etc/environment
@@ -45,7 +45,7 @@ echo "DEFAULT_SERVER_ALERT_LIMIT=${DEFAULT_SERVER_ALERT_LIMIT}" | sudo tee -a /e
 
 source /etc/environment
 
-sudo -u postgres psql -U postgres -d postgres -c "create user $DB_USERNAME with password '$DB_PASSWORD'; alter user $DB_USERNAME with createdb"
+sudo -u postgres psql -U postgres -d postgres -c "create user $POSTGRES_USERNAME with password '$POSTGRES_PASSWORD'; alter user $POSTGRES_USERNAME with createdb"
 sudo -u postgres createdb flipanceadmin
 sudo -u postgres npm run setup-db
 echo "DB set up"

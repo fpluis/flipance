@@ -149,10 +149,10 @@ resource "aws_ssm_parameter" "NFT_SCAN_SECRET" {
   value = var.NFT_SCAN_SECRET
 }
 
-resource "aws_ssm_parameter" "DB_PASSWORD" {
-  name  = "/prod/DB_PASSWORD"
+resource "aws_ssm_parameter" "POSTGRES_PASSWORD" {
+  name  = "/prod/POSTGRES_PASSWORD"
   type  = "SecureString"
-  value = var.DB_PASSWORD
+  value = var.POSTGRES_PASSWORD
 }
 
 data "template_file" "userdata" {
@@ -177,9 +177,9 @@ data "template_file" "userdata" {
     NFT_SCAN_SECRET_PARAM        = aws_ssm_parameter.NFT_SCAN_SECRET.name
     DB_HOSTNAME                  = var.DB_HOSTNAME
     DB_PORT                      = var.DB_PORT
-    DB_USERNAME                  = var.DB_USERNAME
+    POSTGRES_USERNAME                  = var.POSTGRES_USERNAME
     DB_NAME                      = var.DB_NAME
-    DB_PASSWORD                  = aws_ssm_parameter.DB_PASSWORD.name
+    POSTGRES_PASSWORD                  = aws_ssm_parameter.POSTGRES_PASSWORD.name
     MAX_NICKNAME_LENGTH          = var.MAX_NICKNAME_LENGTH
     MAX_OFFER_FLOOR_DIFFERENCE   = var.MAX_OFFER_FLOOR_DIFFERENCE
     DEFAULT_USER_ALERT_LIMIT     = var.DEFAULT_USER_ALERT_LIMIT
