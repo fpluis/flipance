@@ -25,17 +25,12 @@ const {
   POCKET_PROJECT_ID,
   POCKET_SECRET_KEY,
   ALCHEMY_API_KEY,
+  ETHEREUM_NETWORK = "homestead",
 } = process.env;
 
 const POLL_USER_TOKENS_INTERVAL = 5 * 60 * 1000;
 
-/*
- * Every "N" NFT polls, the Discord client is reset to make sure
- * it doesn't die silently.
- */
-// const POLLS_PER_RESET = 10;
-
-const ethProvider = getDefaultProvider("homestead", {
+const ethProvider = getDefaultProvider(ETHEREUM_NETWORK, {
   etherscan: ETHERSCAN_API_KEY,
   infura: INFURA_PROJECT_ID,
   pocket: {
@@ -235,7 +230,6 @@ const monitorBlockchainEvents = async ({
   nftEventEmitter.start();
   nftEventEmitter.on("event", handleNFTEvent);
   nftEventEmitter.on("pollEnded", async () => {
-    console.log(`Polling ended`);
     nftEventEmitter.stop();
     monitorBlockchainEvents({
       dbClient,

@@ -1,6 +1,9 @@
 version: "3.9"
 services:
-  discord-bot:
+  crawler:
+    env_file: .env
+
+  shard:
     env_file: .env
 
   postgres:

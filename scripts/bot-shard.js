@@ -10,12 +10,14 @@ import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
 import createBotClient from "../src/discord/create-bot-client.js";
 import sleep from "../src/sleep.js";
-import minimist from "minimist";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const argv = minimist(process.argv.slice(2));
-const { shardId = 0, totalShards = 1 } = argv;
+// const argv = minimist(process.argv.slice(2));
+const { TOTAL_SHARDS, SHARD_ID, HOSTNAME } = process.env;
+
+let shardId = SHARD_ID ? Number(SHARD_ID) : null;
+let totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : null;
 
 // Milliseconds spent waiting between each poll for NFT events from the DB.
 // Should at least match and exceed Ethereum's block time.
@@ -24,6 +26,29 @@ const DELAY_BETWEEN_POLLS = 20 * 1000;
 // After how many polls the Discord client should reset.
 // This is a preventive measure against silent disconnects.
 const POLLS_BETWEEN_RESETS = 100;
+
+const POLL_SHARDING_INFO_DELAY = 30 * 1000;
+
+const shardingHappened = async (dbClient) => {
+  // Do not fetch sharding info from db if it is stored in the environment
+  if (TOTAL_SHARDS && SHARD_ID) {
+    return Promise.resolve(false);
+  }
+
+  const { object } = await dbClient.getShardingInfo({
+    instanceName: HOSTNAME,
+  });
+  if (object != null) {
+    const { shardId: newShardId, totalShards: newTotalShards } = object;
+    if (newShardId !== shardId || newTotalShards !== totalShards) {
+      shardId = newShardId;
+      totalShards = newTotalShards;
+      return true;
+    }
+  }
+
+  return false;
+};
 
 const minutesAgo = (minutes = 1) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
@@ -56,44 +81,85 @@ const pollNFTEvents = async ({
 
     return events;
   }, []);
+  botClient.setMaxEventAge(lastPollTime);
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
   });
-  await sleep(DELAY_BETWEEN_POLLS);
-  if (currentPolls < POLLS_BETWEEN_RESETS) {
-    pollNFTEvents({
-      botClient,
-      dbClient,
-      lastPollTime: newPollTime,
-      currentPolls: currentPolls + 1,
-    });
-  } else {
+  const shardNeedsRestart = await shardingHappened(dbClient);
+  // Restart the client when sharding happens
+  if (shardNeedsRestart) {
     botClient.destroy();
     const newBotClient = await createBotClient({
       dbClient,
       shardId,
       totalShards,
     });
-    pollNFTEvents({
+    return pollNFTEvents({
       botClient: newBotClient,
       dbClient,
       lastPollTime: newPollTime,
       currentPolls: 0,
     });
   }
+
+  await sleep(DELAY_BETWEEN_POLLS);
+  if (currentPolls < POLLS_BETWEEN_RESETS) {
+    return pollNFTEvents({
+      botClient,
+      dbClient,
+      lastPollTime: newPollTime,
+      currentPolls: currentPolls + 1,
+    });
+  }
+
+  botClient.destroy();
+  const newBotClient = await createBotClient({
+    dbClient,
+    shardId,
+    totalShards,
+  });
+  return pollNFTEvents({
+    botClient: newBotClient,
+    dbClient,
+    lastPollTime: newPollTime,
+    currentPolls: 0,
+  });
+};
+
+const waitForSharding = async (dbClient) => {
+  const ready = await shardingHappened(dbClient);
+  if (ready) {
+    return ready;
+  }
+
+  await sleep(POLL_SHARDING_INFO_DELAY);
+  return waitForSharding(dbClient);
 };
 
 const start = async () => {
-  console.log(
-    `Starting shard client with id ${shardId}, total shards ${totalShards}`
-  );
   const dbClient = await createDbClient();
+  // Client started without sharding info. Waiting to receive it
+  // before handling events.
+  if (shardId == null || totalShards == null) {
+    // Restart the client when sharding happens
+    await waitForSharding(dbClient);
+    const botClient = await createBotClient({
+      dbClient,
+      shardId,
+      totalShards,
+    });
+    return pollNFTEvents({
+      botClient,
+      dbClient,
+    });
+  }
+
   const botClient = await createBotClient({
     dbClient,
     shardId,
     totalShards,
   });
-  pollNFTEvents({ dbClient, botClient });
+  return pollNFTEvents({ dbClient, botClient });
 };
 
 start();

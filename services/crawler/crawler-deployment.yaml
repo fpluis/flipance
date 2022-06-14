@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crawler
+  namespace: "flipance"
+  labels:
+    app: flipance
+    group: flipance
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flipance
+  template:
+    metadata:
+      labels:
+        app: flipance
+        group: flipance
+    spec:
+      containers:
+        - name: crawler
+          image: fpluis/flipance-crawler:latest
+          envFrom:
+            - secretRef:
+                name: flipance-secrets
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          ports:
+            - containerPort: 5432

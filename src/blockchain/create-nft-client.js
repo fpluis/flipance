@@ -19,6 +19,7 @@ const {
   MORALIS_APP_ID,
   MORALIS_MASTER_KEY,
   ALCHEMY_API_KEY,
+  ETHEREUM_NETWORK,
 } = process.env;
 
 /* NFTScan requires a token to call its API. The purpose
@@ -115,8 +116,12 @@ export default async () => {
       usingMoralis = false;
     });
 
+  const domain =
+    ETHEREUM_NETWORK === "homestead"
+      ? "https://eth-mainnet.alchemyapi.io"
+      : "https://eth-rinkeby.alchemyapi.io";
   const alchemyClient = createAlchemyWeb3(
-    `https://eth-mainnet.alchemyapi.io/nft/v2/${ALCHEMY_API_KEY}`
+    `${domain}/nft/v2/${ALCHEMY_API_KEY}`
   );
 
   const getAlchemyNFTs = (address) =>

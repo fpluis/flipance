@@ -6,18 +6,24 @@
 
 import path from "path";
 import dotenv from "dotenv";
-import { createDb, setUpDb, isDbCreated } from "../src/database/index.js";
+import {
+  createDb,
+  setUpDb,
+  isDbCreated,
+  removeDb,
+} from "../src/database/index.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
 const setUp = async () => {
   const dbExists = await isDbCreated();
-  if (!dbExists) {
-    console.log(`DB doesn't exist, creating it`);
-    await createDb();
+  if (dbExists) {
+    await removeDb().catch((error) => {
+      console.log(`Error dropping DB:`, error);
+    });
   }
 
-  console.log(`Setting up the DB`);
+  await createDb();
   return setUpDb();
 };
 
