@@ -6,3 +6,4 @@ logs
 package-lock.json
 coverage
 secret.tfvars
+*secret.yaml

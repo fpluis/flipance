@@ -10,13 +10,19 @@ import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
 import createBotClient from "../src/discord/create-bot-client.js";
 import sleep from "../src/sleep.js";
-import minimist from "minimist";
+import EventEmitter from "events";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const argv = minimist(process.argv.slice(2));
-const { shardId = 0, totalShards = 1 } = argv;
+console.log(`Env: ${JSON.stringify(process.env)}`);
 
+// const argv = minimist(process.argv.slice(2));
+const { TOTAL_SHARDS = 1, SHARD_ID = TOTAL_SHARDS - 1, HOSTNAME } = process.env;
+
+let shardId = SHARD_ID;
+let totalShards = TOTAL_SHARDS;
+
+console.log(`Initiating bot shard ${shardId}/${totalShards}`);
 // Milliseconds spent waiting between each poll for NFT events from the DB.
 // Should at least match and exceed Ethereum's block time.
 const DELAY_BETWEEN_POLLS = 20 * 1000;
@@ -28,6 +34,29 @@ const POLLS_BETWEEN_RESETS = 100;
 const minutesAgo = (minutes = 1) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
+const createShardEventEmitter = (dbClient) => {
+  const eventEmitter = new EventEmitter();
+
+  eventEmitter.poll = async () => {
+    const { object } = await dbClient.getShardingInfo({
+      instanceName: HOSTNAME,
+    });
+    if (object != null) {
+      const { shardId: newShardId, totalShards: newTotalShards } = object;
+      if (newShardId !== shardId || newTotalShards !== totalShards) {
+        shardId = newShardId;
+        totalShards = newTotalShards;
+        eventEmitter.emit("sharding", {
+          shardId,
+          totalShards,
+        });
+      }
+    }
+  };
+
+  return eventEmitter;
+};
+
 /**
  * This function takes as parameter already-configured clients and is in
  * charge of monitoring blockchain events on the target marketplaces and
@@ -38,9 +67,33 @@ const minutesAgo = (minutes = 1) =>
 const pollNFTEvents = async ({
   botClient,
   dbClient,
+  shardEventEmitter,
   lastPollTime = minutesAgo(1),
   currentPolls = 0,
 }) => {
+  shardEventEmitter.poll();
+  // Restart the client when sharding happens
+  shardEventEmitter.on("sharding", async ({ shardId, totalShards }) => {
+    console.log(
+      `Restarting discord shard due to sharding with args ${JSON.stringify({
+        shardId,
+        totalShards,
+      })}`
+    );
+    botClient.destroy();
+    const newBotClient = await createBotClient({
+      dbClient,
+      shardId,
+      totalShards,
+    });
+    pollNFTEvents({
+      botClient: newBotClient,
+      dbClient,
+      shardEventEmitter,
+      lastPollTime: new Date(),
+      currentPolls: currentPolls + 1,
+    });
+  });
   const { objects: nftEvents } = await dbClient.getWatchedNFTEvents({
     createdAt: lastPollTime,
   });
@@ -64,6 +117,7 @@ const pollNFTEvents = async ({
     pollNFTEvents({
       botClient,
       dbClient,
+      shardEventEmitter,
       lastPollTime: newPollTime,
       currentPolls: currentPolls + 1,
     });
@@ -77,6 +131,7 @@ const pollNFTEvents = async ({
     pollNFTEvents({
       botClient: newBotClient,
       dbClient,
+      shardEventEmitter,
       lastPollTime: newPollTime,
       currentPolls: 0,
     });
@@ -93,7 +148,12 @@ const start = async () => {
     shardId,
     totalShards,
   });
-  pollNFTEvents({ dbClient, botClient });
+  const shardEventEmitter = createShardEventEmitter({
+    dbClient,
+    shardId,
+    totalShards,
+  });
+  pollNFTEvents({ dbClient, botClient, shardEventEmitter });
 };
 
 start();

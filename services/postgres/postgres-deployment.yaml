@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: "flipance"
+  labels:
+    app: postgres
+    group: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        type: db
+    spec:
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-persistent-volume-claim
+      containers:
+        - name: postgres
+          image: postgres:9.6-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: flipance-secrets
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
