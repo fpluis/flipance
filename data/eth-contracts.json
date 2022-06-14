@@ -1,7 +1,7 @@
 {
   "openSea": {
     "marketplace": "openSea",
-    "address": "0x7f268357A8c2552623316e2562D90e642bB538E5",
+    "homestead":"0x7f268357A8c2552623316e2562D90e642bB538E5",
     "abi": [
       {
         "constant": true,
@@ -1285,7 +1285,8 @@
   },
   "looksRare": {
     "marketplace": "looksRare",
-    "address": "0x59728544B08AB483533076417FbBB2fD0B17CE3a",
+    "homestead":"0x59728544B08AB483533076417FbBB2fD0B17CE3a",
+    "rinkeby": "0x1AA777972073Ff66DCFDeD85749bDD555C0665dA",
     "abi": [
       {
         "inputs": [
@@ -2269,7 +2270,7 @@
   },
   "rarible": {
     "marketplace": "rarible",
-    "address": "0x9757F2d2b135150BBeb65308D4a91804107cd8D6",
+    "homestead":"0x9757F2d2b135150BBeb65308D4a91804107cd8D6",
     "abi": [
       {
         "anonymous": false,
@@ -3089,7 +3090,7 @@
   },
   "foundation": {
     "marketplace": "foundation",
-    "address": "0xcDA72070E455bb31C7690a170224Ce43623d0B6f",
+    "homestead":"0xcDA72070E455bb31C7690a170224Ce43623d0B6f",
     "abi": [
       {
         "inputs": [
@@ -3961,7 +3962,7 @@
     ]
   },
   "superrare": {
-    "address": "0x6D7c44773C52D396F43c2D511B81aa168E9a7a42",
+    "homestead":"0x6D7c44773C52D396F43c2D511B81aa168E9a7a42",
     "abi": [
       {
         "anonymous": false,
@@ -5520,7 +5521,7 @@
     ]
   },
   "nftx": {
-    "address": "0x0fc584529a2AEfA997697FAfAcbA5831faC0c22d",
+    "homestead":"0x0fc584529a2AEfA997697FAfAcbA5831faC0c22d",
     "abi": [
       {
         "inputs": [
@@ -6234,7 +6235,7 @@
   },
   "x2y2": {
     "marketplace": "x2y2",
-    "address": "0x74312363e45DCaBA76c59ec49a7Aa8A65a67EeD3",
+    "homestead":"0x74312363e45DCaBA76c59ec49a7Aa8A65a67EeD3",
     "abi": [
       {
         "anonymous": false,

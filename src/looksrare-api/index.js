@@ -15,6 +15,13 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 
+const { ETHEREUM_NETWORK = "homestead" } = process.env;
+
+const looksRareAPI =
+  ETHEREUM_NETWORK === "homestead"
+    ? `https://api.looksrare.org`
+    : `https://api-rinkeby.looksrare.org`;
+
 const minutesAgo = (minutes = 2) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
@@ -65,7 +72,7 @@ const callLRWithRetries = (endpoint = "", retries = 3) =>
  */
 export const getCollectionOffers = ({ collection, first = 1 }) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`
+    `${looksRareAPI}/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`
   );
 
 /**
@@ -77,7 +84,7 @@ export const getCollectionOffers = ({ collection, first = 1 }) =>
  */
 export const getCollectionFloor = ({ collection, first = 1 }) =>
   callLRWithRetries(
-    `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=PRICE_ASC`
+    `${looksRareAPI}/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=PRICE_ASC`
   );
 
 /**
@@ -94,7 +101,7 @@ export const getCollectionListings = ({
   first = 150,
   cursor = null,
 }) => {
-  let endpoint = `https://api.looksrare.org/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=NEWEST`;
+  let endpoint = `${looksRareAPI}/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=NEWEST`;
   if (cursor) {
     endpoint = `${endpoint}&pagination[cursor]=${cursor}`;
   }

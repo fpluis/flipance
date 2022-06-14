@@ -32,10 +32,12 @@ const LR_SLICE_SIZE = 60;
 const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 
+const emptyContract = { removeAllListeners: () => {} };
+
 const minutesAgo = (minutes = 2) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
-const { MARKETPLACES } = process.env;
+const { MARKETPLACES, ETHEREUM_NETWORK = "homestead" } = process.env;
 const ALLOWED_MARKETPLACE_IDS =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
@@ -394,7 +396,12 @@ export default (ethProvider, collections = []) => {
    */
   const openSeaEventListener = () => {
     const marketplace = "openSea";
-    const { address, abi } = ethContracts.openSea;
+    const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.openSea;
+    if (address == null) {
+      console.log(`No address set for OpenSea on network ${ETHEREUM_NETWORK}`);
+      return emptyContract;
+    }
+
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.OrdersMatched(), async (...args) => {
       const event = args[args.length - 1];
@@ -451,7 +458,14 @@ export default (ethProvider, collections = []) => {
    */
   const looksRareEventListener = () => {
     const marketplace = "looksRare";
-    const { address, abi } = ethContracts.looksRare;
+    const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.looksRare;
+    if (address == null) {
+      console.log(
+        `No address set for LooksRare on network ${ETHEREUM_NETWORK}`
+      );
+      return emptyContract;
+    }
+
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.TakerAsk(), async (...args) => {
       const event = args[args.length - 1];
@@ -511,7 +525,12 @@ export default (ethProvider, collections = []) => {
    */
   const raribleEventListener = () => {
     const marketplace = "rarible";
-    const { address, abi } = ethContracts.rarible;
+    const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.rarible;
+    if (address == null) {
+      console.log(`No address set for Rarible on network ${ETHEREUM_NETWORK}`);
+      return emptyContract;
+    }
+
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.Match(), async (...args) => {
       const event = args[args.length - 1];
@@ -572,7 +591,14 @@ export default (ethProvider, collections = []) => {
    */
   const foundationEventListener = () => {
     const marketplace = "foundation";
-    const { address, abi } = ethContracts.foundation;
+    const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.foundation;
+    if (address == null) {
+      console.log(
+        `No address set for Foundation on network ${ETHEREUM_NETWORK}`
+      );
+      return emptyContract;
+    }
+
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.ReserveAuctionFinalized(), async (...args) => {
       const event = args[args.length - 1];
@@ -649,7 +675,12 @@ export default (ethProvider, collections = []) => {
    */
   const x2y2EventListener = () => {
     const marketplace = "x2y2";
-    const { address, abi } = ethContracts.x2y2;
+    const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.x2y2;
+    if (address == null) {
+      console.log(`No address set for X2Y2 on network ${ETHEREUM_NETWORK}`);
+      return emptyContract;
+    }
+
     const contract = new ethers.Contract(address, abi, ethProvider);
     contract.on(contract.filters.EvInventory(), async (...args) => {
       const event = args[args.length - 1];
@@ -887,9 +918,7 @@ export default (ethProvider, collections = []) => {
       collectionsToPoll = collections;
     }
 
-    console.log(`Polling collections ${JSON.stringify(collectionsToPoll)}`);
     if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
-      console.log(`Polling LR`);
       await pollLRFloors(collectionsToPoll);
       await sleep(POLL_COLLECTION_SLICE_DELAY);
       await pollLRListings(collectionsToPoll);
