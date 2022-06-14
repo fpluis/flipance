@@ -18,8 +18,6 @@ const allEventIds = nftEvents.map(({ id }) => id);
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
-const MAX_MINUTE_DIFFERENCE = 3.5;
-
 const argv = minimist(process.argv.slice(2));
 
 const {
@@ -27,9 +25,6 @@ const {
   DISCORD_BOT_TOKEN_TEST,
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
-
-const datesMinuteDifference = (date) =>
-  Math.floor((new Date() - new Date(date)) / 1000) / 60;
 
 /**
  * Determine whether a user/server should be notified of an NFT event
@@ -50,18 +45,19 @@ const datesMinuteDifference = (date) =>
  * floor an offer can have to be relevant to the alert.
  * @return {Boolean}
  */
-const isAllowedByPreferences = (
-  { marketplace, eventType, floorDifference, seller, startsAt },
-  {
+const isAllowedByPreferences = ({
+  event: { marketplace, eventType, floorDifference, seller, createdAt },
+  watcher: {
     allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
     maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
     address,
     type: alertType,
-  } = {}
-) => {
+  } = {},
+  maxEventAge,
+}) => {
   if (
-    datesMinuteDifference(startsAt) > MAX_MINUTE_DIFFERENCE ||
+    createdAt < maxEventAge ||
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType)
   ) {
@@ -81,28 +77,33 @@ const isAllowedByPreferences = (
     eventType === "listing" &&
     !(address === seller || alertType === "collection")
   ) {
-    console.log(`Non-event detected`);
     return false;
   }
 
   return true;
 };
 
-export default ({ dbClient, shardId, totalShards }) =>
-  new Promise((resolve, reject) => {
-    console.log(
-      `Starting shard client with shard info ${shardId}/${totalShards}`
-    );
+const minutesAgo = (minutes = 1) =>
+  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
+
+export default ({ dbClient, shardId, totalShards }) => {
+  let maxEventAge = minutesAgo(2);
+
+  return new Promise((resolve, reject) => {
     const discordClient = new Client({
       intents: [Intents.FLAGS.GUILDS],
-      shards: shardId,
-      shardCount: totalShards,
+      shards: Number(shardId),
+      shardCount: Number(totalShards),
     });
     discordClient.login(argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN);
 
     if (argv.test) {
       console.log(`Starting the client in TEST mode`);
     }
+
+    discordClient.setMaxEventAge = (age = new Date()) => {
+      maxEventAge = age;
+    };
 
     /*
      * Handle NFT events coming from the blockchain. If there is an alert
@@ -118,7 +119,7 @@ export default ({ dbClient, shardId, totalShards }) =>
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         const isUserMessage = alertType === "wallet";
-        if (isAllowedByPreferences(event, watcher)) {
+        if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
           const embed = await buildEmbed({
             ...event,
             target: isUserMessage ? "user" : "server",
@@ -195,3 +196,4 @@ export default ({ dbClient, shardId, totalShards }) =>
       registerCommands(guild.id);
     });
   });
+};

@@ -2,10 +2,10 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: shard
-  namespace: "flipance"
+  namespace: flipance
   labels:
     app: flipance
-    group: shards
+    group: flipance
 spec:
   replicas: 1
   selector:
@@ -15,7 +15,7 @@ spec:
     metadata:
       labels:
         app: flipance
-        group: flipance
+        group: shards
     spec:
       containers:
         - name: shard

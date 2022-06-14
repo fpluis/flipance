@@ -33,7 +33,6 @@ const allEventIds = nftEvents.map(({ id }) => id);
 
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
-console.log(`Allowed marketplace ids ${JSON.stringify(allowedMarketplaceIds)}`);
 const marketplaces = allMarketplaces.filter(({ id }) =>
   allowedMarketplaceIds.includes(id)
 );

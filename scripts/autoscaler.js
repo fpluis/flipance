@@ -4,53 +4,32 @@ import { Util } from "discord.js";
 import k8s from "@kubernetes/client-node";
 import sleep from "../src/sleep.js";
 import { createDbClient } from "../src/database/index.js";
+import logMessage from "../src/log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 const { DISCORD_BOT_TOKEN } = process.env;
 
 const deploymentName = "shard";
 const namespace = "flipance";
+const POLLING_PERIOD = 30 * 1000;
+const POLL_DISCORD_SHARDS_PERIOD = 15 * 60 * 1000;
 
-const periodicAutoscale = async ({ k8sApi, k8sCoreApi, dbClient }) => {
-  console.log(`Running the autoscaler`);
-  const namespacedDeploymentResponse = await k8sApi
-    .readNamespacedDeployment(deploymentName, namespace)
-    .catch(async (error) => {
-      console.log(`Error reading deployments:`, error);
-      await sleep(30 * 1000);
+const periodicAutoscale = async (args) => {
+  const { k8sCoreApi, dbClient } = args;
+
+  const listNamespacePodResult = await k8sCoreApi
+    .listNamespacedPod(namespace)
+    .catch(() => {
       return {};
     });
-  const { body: deployment } = namespacedDeploymentResponse;
-  const shardCount = Math.floor(Math.random() * 3) + 1;
-  const actualShardCount = await Util.fetchRecommendedShards(DISCORD_BOT_TOKEN);
-  console.log(
-    `Current replicas: ${
-      deployment.spec.replicas
-    }. Setting shard count to: ${JSON.stringify(
-      actualShardCount
-    )} (fake to ${shardCount})`
-  );
-  if (Number(deployment.spec.replicas) !== shardCount) {
-    deployment.spec.replicas = shardCount;
-    await k8sApi
-      .replaceNamespacedDeployment(deploymentName, namespace, deployment)
-      .catch((error) => {
-        console.log(
-          `Error editing the namespaced deployment with args ${JSON.stringify(
-            deploymentName,
-            namespace,
-            deployment
-          )}:`,
-          error
-        );
-      });
+  if (listNamespacePodResult.body == null) {
+    await sleep(POLLING_PERIOD);
+    return periodicAutoscale(args);
   }
 
   const {
-    reponse: {
-      body: { items: pods },
-    },
-  } = await k8sCoreApi.listNamespacedPod(namespace);
+    body: { items: pods },
+  } = listNamespacePodResult;
   const podNames = pods.reduce(
     (
       names,
@@ -69,8 +48,7 @@ const periodicAutoscale = async ({ k8sApi, k8sCoreApi, dbClient }) => {
     },
     []
   );
-  console.log(`Pod names: ${JSON.stringify(podNames)}`);
-  const results = await Promise.all(
+  await Promise.all(
     podNames.map((instanceName, shardId) =>
       dbClient.setShardingInfo({
         shardId,
@@ -78,10 +56,79 @@ const periodicAutoscale = async ({ k8sApi, k8sCoreApi, dbClient }) => {
         totalShards: podNames.length,
       })
     )
-  );
-  console.log(`Update sharding info results: ${JSON.stringify(results)}`);
-  await sleep(30 * 1000);
-  periodicAutoscale({ k8sApi, k8sCoreApi, dbClient });
+  ).catch((error) => {
+    console.log(`Error updating DB state with new sharding info`, error);
+    return [];
+  });
+  await sleep(POLLING_PERIOD);
+  return periodicAutoscale(args);
+};
+
+const getDiscordRecommendedShardCount = () => {
+  return Util.fetchRecommendedShards(DISCORD_BOT_TOKEN)
+    .then((response) => {
+      return response;
+    })
+    .catch(async (response) => {
+      console.log(
+        `Error getting Discord's recommended shard count: ${JSON.stringify(
+          response
+        )}`
+      );
+      const retryAfter = response.headers.get("retry-after");
+      if (retryAfter) {
+        await sleep(Number(retryAfter) * 1000);
+      }
+
+      // return Promise.resolve(Math.floor(Math.random() * 3) + 1);
+      return null;
+    });
+};
+
+const pollDiscordShards = async (args) => {
+  const { k8sApi } = args;
+  const shardCount = await getDiscordRecommendedShardCount();
+  if (shardCount == null) {
+    await sleep(POLL_DISCORD_SHARDS_PERIOD);
+    return pollDiscordShards(args);
+  }
+
+  const namespacedDeploymentResponse = await k8sApi
+    .readNamespacedDeployment(deploymentName, namespace)
+    .catch(async (error) => {
+      console.log(`Error reading deployments:`, error);
+      return {};
+    });
+  const { body: deployment } = namespacedDeploymentResponse;
+  if (deployment == null) {
+    await sleep(POLL_DISCORD_SHARDS_PERIOD);
+    return pollDiscordShards(args);
+  }
+
+  if (Number(deployment.spec.replicas) !== shardCount) {
+    deployment.spec.replicas = shardCount;
+    const result = await k8sApi
+      .replaceNamespacedDeployment(deploymentName, namespace, deployment)
+      .then(() => "success")
+      .catch((error) => {
+        logMessage(
+          `Error editing the namespaced deployment with args ${JSON.stringify(
+            deploymentName,
+            namespace,
+            deployment
+          )}:`,
+          "error",
+          error
+        );
+        return "error";
+      });
+    if (result !== "success") {
+      return pollDiscordShards(args);
+    }
+  }
+
+  await sleep(POLL_DISCORD_SHARDS_PERIOD);
+  return pollDiscordShards(args);
 };
 
 const start = async () => {
@@ -90,7 +137,9 @@ const start = async () => {
   const k8sApi = kc.makeApiClient(k8s.AppsV1Api);
   const k8sCoreApi = kc.makeApiClient(k8s.CoreV1Api);
   const dbClient = await createDbClient();
-  periodicAutoscale({ k8sApi, k8sCoreApi, dbClient });
+  const args = { k8sApi, k8sCoreApi, dbClient };
+  periodicAutoscale(args);
+  pollDiscordShards(args);
 };
 
 start();

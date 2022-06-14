@@ -12,11 +12,12 @@ dotenv.config({ path: path.resolve(".env") });
 
 const setUp = async () => {
   const dbExists = await isDbCreated();
-  if (dbExists) {
-    return Promise.resolve();
+  if (!dbExists) {
+    console.log(`DB doesn't exist, creating it`);
+    await createDb();
   }
 
-  await createDb();
+  console.log(`Setting up the DB`);
   return setUpDb();
 };
 
