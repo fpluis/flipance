@@ -116,6 +116,11 @@ export default ({ dbClient, shardId, totalShards }) => {
         return Promise.resolve();
       }
 
+      console.log(
+        `About to send out event ${JSON.stringify(
+          event
+        )}. Max event age allowed: ${maxEventAge}`
+      );
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         const isUserMessage = alertType === "wallet";
