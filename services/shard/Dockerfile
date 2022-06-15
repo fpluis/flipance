@@ -13,4 +13,4 @@ RUN npm install
 
 COPY . .
 
-CMD node scripts/bot-shard.js --test
+CMD node scripts/bot-shard.js
