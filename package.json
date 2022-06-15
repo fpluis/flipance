@@ -29,6 +29,7 @@
   "type": "module",
   "scripts": {
     "polling-node": "node --experimental-vm-modules scripts/polling-node.js",
+    "polling-node-testnet": "export ETHEREUM_NETWORK=rinkeby || set ETHEREUM_NETWORK=rinkeby&& node --experimental-vm-modules scripts/polling-node.js",
     "bot-shard": "node --experimental-vm-modules scripts/bot-shard.js",
     "setup-db": "node --experimental-vm-modules scripts/setup-db.js",
     "register-commands": "node --experimental-vm-modules scripts/register-commands.js",

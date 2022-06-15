@@ -365,6 +365,16 @@ listens to blockchain events.
 - __register-commands__: Register the bot's commands on every Discord server where it is installed. You must run this script once if you modify any slash command.
 - __setup-db__: Create and initialize the Flipance database. If the database already existed, it will be overwritten and any data on it will be lost, so run this script only if you are certain you need to.
 
+# Running the bot on a testnet
+
+You can change the ethereum chain that the bot listens to by setting the _ETHEREUM_NETWORK_ env variable. Currently the bot only supports Rinkeby events on LooksRare. To run the bot on the testnet without changing the environment, you can also start the polling node using the command:
+
+```
+npm run polling-node-testnet
+```
+
+And the bot shard regularly, for example ```npm run bot-shard```.
+
 # Docker setup
 
 There is a [Docker image available](https://hub.docker.com/repository/docker/fpluis/flipance-discord-bot) for this repository that lets you deploy your own Flipance instance using [docker-compose](https://docs.docker.com/compose/install/). You can pull the image by running the following command on this repository:
