@@ -9,6 +9,8 @@ import minimist from "minimist";
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
 
+const MAX_MINUTE_DIFFERENCE = 3;
+
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
@@ -19,6 +21,9 @@ const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
 const argv = minimist(process.argv.slice(2));
+
+const minuteDifference = (date1, date2) =>
+  (date2.getTime() - date1.getTime()) / 60000;
 
 const {
   DISCORD_BOT_TOKEN,
@@ -46,7 +51,14 @@ const {
  * @return {Boolean}
  */
 const isAllowedByPreferences = ({
-  event: { marketplace, eventType, floorDifference, seller, createdAt },
+  event: {
+    marketplace,
+    eventType,
+    floorDifference,
+    seller,
+    createdAt,
+    startsAt,
+  },
   watcher: {
     allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
@@ -58,6 +70,7 @@ const isAllowedByPreferences = ({
 }) => {
   if (
     createdAt < maxEventAge ||
+    minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE ||
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType)
   ) {
