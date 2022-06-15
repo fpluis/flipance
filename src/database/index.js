@@ -246,7 +246,7 @@ export const setUpDb = async ({
   await Promise.all(
     createTableQueries.map((query) =>
       client.query(query).catch((error) => {
-        console.log(`Error handling query "${query}":`, error);
+        logMessage(`Error handling query "${query}":`, "warning", error);
       })
     )
   );
