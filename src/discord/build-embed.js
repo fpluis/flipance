@@ -30,6 +30,22 @@ const marketplaceIdToMdLink = (marketplace) => {
   }
 };
 
+/* Generate the item's URL on the marketplace where the event comes from */
+const generateTokenMarketplaceURL = (marketplace, collection, tokenId) => {
+  switch (marketplace) {
+    case "looksRare":
+    case "foundation":
+      return `https://looksrare.org/collections/${collection}/${tokenId}`;
+    case "rarible":
+      return `https://rarible.com/token/${collection}:${tokenId}`;
+    case "x2y2":
+      return `https://x2y2.io/eth/${collection}/${tokenId}`;
+    case "openSea":
+    default:
+      return `https://opensea.io/assets/ethereum/${collection}/${tokenId}`;
+  }
+};
+
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
 const describePrice = ({ price, floorDifference, collectionFloor }) => {
@@ -101,14 +117,24 @@ const describeOffer = ({
  * Create the embed description for an acceptOffer event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
- * @param {String} transactionHash - The transaction's hash in Ethereum.
+ * @param {String} marketplaceId - The marketplace's id. Complete list is
+ * available at data/marketplaces.json
+ * @param {String} collection - The collection's address on the blockchain.
+ * @param {String} tokenId - The id of the token being traded.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
 const describeAcceptOffer = (args) => {
-  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
-    args;
+  const {
+    isBuyer,
+    isSeller,
+    marketplaceId,
+    collection,
+    tokenId,
+    marketplace,
+    priceDescription,
+  } = args;
   const description = isBuyer
     ? `You accepted an offer on ${marketplace} for ${priceDescription}`
     : isSeller
@@ -116,7 +142,7 @@ const describeAcceptOffer = (args) => {
     : `Offer accepted on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Sale!",
-    url: `https://etherscan.io/tx/${transactionHash}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
@@ -128,7 +154,10 @@ const describeIntermediary = (intermediary) =>
  * Create the embed description for an acceptAsk event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
- * @param {String} transactionHash - The transaction's hash in Ethereum.
+ * @param {String} marketplaceId - The marketplace's id. Complete list is
+ * available at data/marketplaces.json
+ * @param {String} collection - The collection's address on the blockchain.
+ * @param {String} tokenId - The id of the token being traded.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
@@ -137,7 +166,9 @@ const describeAcceptAsk = (args) => {
   const {
     isBuyer,
     isSeller,
-    transactionHash,
+    marketplaceId,
+    collection,
+    tokenId,
     marketplace,
     priceDescription,
     intermediary,
@@ -152,7 +183,7 @@ const describeAcceptAsk = (args) => {
     : `NFT bought on ${marketplace} for ${priceDescription}${intermediaryString}`;
   return {
     title: "New Sale!",
-    url: `https://etherscan.io/tx/${transactionHash}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
@@ -160,19 +191,29 @@ const describeAcceptAsk = (args) => {
 /**
  * Create the embed description for a createAuction event.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
- * @param {String} transactionHash - The transaction's hash in Ethereum.
+ * @param {String} marketplaceId - The marketplace's id. Complete list is
+ * available at data/marketplaces.json
+ * @param {String} collection - The collection's address on the blockchain.
+ * @param {String} tokenId - The id of the token being traded.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
 const describeCreateAuction = (args) => {
-  const { isSeller, transactionHash, marketplace, priceDescription } = args;
+  const {
+    isSeller,
+    marketplaceId,
+    collection,
+    tokenId,
+    marketplace,
+    priceDescription,
+  } = args;
   const description = isSeller
     ? `You created an auction on ${marketplace} with reserve price ${priceDescription}`
     : `Auction created on ${marketplace} with reserve price ${priceDescription}`;
   return {
     title: "New Sale!",
-    url: `https://etherscan.io/tx/${transactionHash}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
@@ -181,14 +222,24 @@ const describeCreateAuction = (args) => {
  * Create the embed description for a settleAuction event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {Boolean} isSeller - Whether the notified user is the seller.
- * @param {String} transactionHash - The transaction's hash in Ethereum.
+ * @param {String} marketplaceId - The marketplace's id. Complete list is
+ * available at data/marketplaces.json
+ * @param {String} collection - The collection's address on the blockchain.
+ * @param {String} tokenId - The id of the token being traded.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
 const describeSettleAuction = (args) => {
-  const { isBuyer, isSeller, transactionHash, marketplace, priceDescription } =
-    args;
+  const {
+    isBuyer,
+    isSeller,
+    marketplaceId,
+    collection,
+    tokenId,
+    marketplace,
+    priceDescription,
+  } = args;
   const description = isBuyer
     ? `You won an auction on ${marketplace} for ${priceDescription}`
     : isSeller
@@ -196,7 +247,7 @@ const describeSettleAuction = (args) => {
     : `Auction won on ${marketplace} for ${priceDescription}`;
   return {
     title: "New Sale!",
-    url: `https://etherscan.io/tx/${transactionHash}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
@@ -204,19 +255,29 @@ const describeSettleAuction = (args) => {
 /**
  * Create the embed description for an auctionBid event.
  * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {String} transactionHash - The transaction's hash in Ethereum.
+ * @param {String} marketplaceId - The marketplace's id. Complete list is
+ * available at data/marketplaces.json
+ * @param {String} collection - The collection's address on the blockchain.
+ * @param {String} tokenId - The id of the token being traded.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
 const describeAuctionBid = (args) => {
-  const { isBuyer, transactionHash, marketplace, priceDescription } = args;
+  const {
+    isBuyer,
+    marketplaceId,
+    collection,
+    tokenId,
+    marketplace,
+    priceDescription,
+  } = args;
   const description = isBuyer
     ? `You placed a ${priceDescription} bid on an auction in ${marketplace}`
     : `New ${priceDescription} bid on an auction in ${marketplace}`;
   return {
     title: "New Auction Bid!",
-    url: `https://etherscan.io/tx/${transactionHash}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
@@ -247,10 +308,7 @@ const describeListing = (args) => {
   return {
     title: "New Listing!",
     description,
-    url:
-      marketplaceId === "looksRare"
-        ? `https://looksrare.org/collections/${collection}/${tokenId}`
-        : `https://looksrare.org/collections/${collection}/${tokenId}`,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
   };
 };
 
@@ -400,7 +458,7 @@ export default async (args) => {
       name: "Buyer",
       value: `[${makeAddressReadable(
         buyerAddress
-      )}](https://etherscan.io/address/${buyerAddress})`,
+      )}](https://looksrare.org/accounts/${buyerAddress})`,
     });
   }
 
@@ -409,7 +467,7 @@ export default async (args) => {
       name: "Seller",
       value: `[${makeAddressReadable(
         sellerAddress
-      )}](https://etherscan.io/address/${sellerAddress})`,
+      )}](https://looksrare.org/accounts/${sellerAddress})`,
       inline: true,
     });
   }
@@ -451,12 +509,12 @@ export default async (args) => {
     });
   }
 
-  embed.fields.push({
-    name: "Marketplace link",
-    value: `[View on LooksRare](${
-      tokenId == null ? collectionUrl : `${collectionUrl}/${tokenId}`
-    })`,
-  });
+  if (transactionHash) {
+    embed.fields.push({
+      name: "Ethereum transaction",
+      value: `[View on etherscan](https://etherscan.io/tx/${transactionHash})`,
+    });
+  }
 
   const files = [];
 
