@@ -16,8 +16,10 @@ dotenv.config({ path: path.resolve(".env") });
 // const argv = minimist(process.argv.slice(2));
 const { TOTAL_SHARDS, SHARD_ID, HOSTNAME } = process.env;
 
-let shardId = SHARD_ID ? Number(SHARD_ID) : null;
+const [shardIdFromString] = SHARD_ID.match(/\d$/) || [];
+let shardId = shardIdFromString ? Number(shardIdFromString) : null;
 let totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : null;
+console.log(`Shard configuration: ${shardId}/${totalShards}`);
 
 // Milliseconds spent waiting between each poll for NFT events from the DB.
 // Should at least match and exceed Ethereum's block time.
