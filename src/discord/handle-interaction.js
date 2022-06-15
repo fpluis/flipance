@@ -352,7 +352,9 @@ const handleDeleteAlert = async ({ dbClient, discordClient, interaction }) => {
     });
 
   const identifier =
-    address == null ? `with nickname ${nickname}` : `for address ${address}`;
+    address == null
+      ? `with nickname "${nickname}"`
+      : `for address "${address}"`;
   switch (result) {
     case "success":
       await discordClient.users.cache
