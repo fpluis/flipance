@@ -76,7 +76,7 @@ const pollNFTEvents = async ({
   const myEvents = nftEvents.reduce((events, { watchers, ...event }) => {
     const myWatchers = watchers.filter(({ discordId }) => {
       // eslint-disable-next-line no-bitwise
-      return (discordId >> 22) % totalShards === shardId;
+      return Math.abs((discordId >> 22) % totalShards) === shardId;
     });
     if (myWatchers.length > 0) {
       return events.concat({ ...event, watchers: myWatchers });
