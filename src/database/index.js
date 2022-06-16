@@ -15,7 +15,7 @@ const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
-const allBlockchainIds = [{ id: "ethereum" }].map(({ id }) => id);
+const allBlockchainIds = [{ id: "eth" }].map(({ id }) => id);
 const allStandardIds = [{ id: "ERC-721" }, { id: "ERC-1155" }].map(
   ({ id }) => id
 );
@@ -192,7 +192,7 @@ const createTableQueries = [
     event_type SMALLINT,\
     blockchain SMALLINT NOT NULL,\
     marketplace SMALLINT,\
-    UNIQUE (blockchain, hash, event_type, collection, token_id, buyer, seller),\
+    UNIQUE (hash, event_type, collection, token_id),\
     collection CHAR(42),\
     initiator CHAR(42),\
     buyer CHAR(42),\
@@ -208,6 +208,56 @@ const createTableQueries = [
     price DOUBLE PRECISION\
   );`,
 ];
+
+const patchDBQueries = [
+  `ALTER TABLE nft_events DROP CONSTRAINT nft_events_blockchain_hash_event_type_collection_token_id_b_key;`,
+  `ALTER TABLE nft_events ADD CONSTRAINT unique_event UNIQUE (hash, event_type, collection, token_id);`,
+];
+
+/**
+ *
+ * Patch the DB to apply the latest changes to tables/constraints
+ * @param {Object} params
+ * @param {String} params.host The database's hostname. Default: "localhost"
+ * @param {Number} params.port The database's port. Default: 5432
+ * @param {String} params.user The database's user. Default: "postgres"
+ * @param {String} params.password The user's password.
+ * @param {String} params.dbName The database's name. Default: "flipance"
+ * @return {void}
+ */
+const patchDB = async ({
+  host = DB_HOSTNAME,
+  port = DB_PORT,
+  user = POSTGRES_USERNAME,
+  password = POSTGRES_PASSWORD,
+  dbName = DB_NAME,
+}) => {
+  console.log(`Patch DB`);
+  const pool = new Pool({
+    host,
+    port,
+    user,
+    database: dbName,
+    password,
+  });
+
+  pool.on("error", (error) => {
+    console.error("Unexpected error on client", error);
+  });
+
+  const client = await pool.connect().catch((error) => {
+    throw error;
+  });
+  await Promise.all(
+    patchDBQueries.map((query) =>
+      client.query(query).catch((error) => {
+        logMessage(`Error handling query "${query}":`, "warning", error);
+      })
+    )
+  ).catch(() => {});
+  await client.release();
+  return pool.end();
+};
 
 /**
  *
@@ -250,6 +300,13 @@ export const setUpDb = async ({
       })
     )
   );
+  await patchDB({
+    host,
+    port,
+    user,
+    password,
+    dbName,
+  });
   await client.release();
   return pool.end();
 };
@@ -1724,6 +1781,10 @@ export const createDbClient = async ({
         values
       )
       .then(({ rows }) => {
+        if (eventType === "listing") {
+          console.log(`Add new event to DB: ${JSON.stringify(rows)}`);
+        }
+
         return {
           result: rows.length > 0 ? "success" : "error",
           object: toNFTEventObject(rows[0]),
@@ -1732,22 +1793,20 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (
-          constraint !==
-          "nft_events_blockchain_hash_event_type_collection_token_id_b_key"
+          constraint !== "nft_events_hash_event_type_collection_token_id_key"
         ) {
           logMessage(
             `Error creating NFT event with args ${JSON.stringify(nftEvent)}`,
             "error",
             error
           );
-          return { result: "error", objects: [] };
+          return { result: "warning", objects: [] };
         }
 
         return {
           object: null,
           result:
-            constraint ===
-            "nft_events_blockchain_hash_event_type_collection_token_id_b_key"
+            constraint === "nft_events_hash_event_type_collection_token_id_key"
               ? "already-exists"
               : "error",
         };
@@ -1800,7 +1859,7 @@ export const createDbClient = async ({
    * @property {Array[NFTEventResponse]} objects - The new NFT events.
    * @return {NFTEventsResponse}
    */
-  const getWatchedNFTEvents = ({ createdAt } = {}) => {
+  const getWatchedNFTEvents = ({ createdAt, minId = 0 } = {}) => {
     if (createdAt == null) {
       return { result: "missing-arguments", objects: [] };
     }
@@ -1822,9 +1881,9 @@ export const createDbClient = async ({
               SELECT settings_id FROM users WHERE users.id = alerts.user_id)
           WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection\
         ) alerts ON true\
-        WHERE nft_events.created_at >= $1\
+        WHERE nft_events.created_at >= $1 AND nft_events.id > $2\
         ORDER BY created_at DESC`,
-        [createdAt]
+        [createdAt, minId]
       )
       .then(({ rows }) => {
         return { result: "success", objects: rows.map(toNFTEventObject) };

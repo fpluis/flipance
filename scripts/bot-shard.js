@@ -19,7 +19,7 @@ const { TOTAL_SHARDS, SHARD_ID, HOSTNAME } = process.env;
 const [shardIdFromString] = SHARD_ID.match(/\d$/) || [];
 let shardId = shardIdFromString ? Number(shardIdFromString) : null;
 let totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : null;
-console.log(`Shard configuration: ${shardId}/${totalShards}`);
+console.log(`Shard configuration: ${shardId + 1}/${totalShards}`);
 
 // Milliseconds spent waiting between each poll for NFT events from the DB.
 // Should at least match and exceed Ethereum's block time.
@@ -67,11 +67,12 @@ const pollNFTEvents = async ({
   dbClient,
   lastPollTime = minutesAgo(1),
   currentPolls = 0,
+  minId = 0,
 }) => {
   const { objects: nftEvents } = await dbClient.getWatchedNFTEvents({
     createdAt: lastPollTime,
+    minId,
   });
-  const newPollTime = new Date();
   const myEvents = nftEvents.reduce((events, { watchers, ...event }) => {
     const myWatchers = watchers.filter(({ discordId }) => {
       // eslint-disable-next-line no-bitwise
@@ -83,6 +84,20 @@ const pollNFTEvents = async ({
 
     return events;
   }, []);
+  const lastPolledId =
+    nftEvents.length > 0 ? Math.max(...nftEvents.map(({ id }) => id)) : minId;
+  const [{ startsAt: newPollTime }] =
+    nftEvents.length > 0
+      ? nftEvents.sort(
+          ({ startsAt: startsAt1 }, { startsAt: startsAt2 }) =>
+            startsAt1 - startsAt2
+        )
+      : [{ startsAt: new Date() }];
+  console.log(
+    `Received ${nftEvents.length} events (I handle ${
+      myEvents.length
+    }) since date ${lastPollTime.toISOString()}, id ${minId}. New poll time ${newPollTime.toISOString()}, last polled id ${lastPolledId}`
+  );
   botClient.setMaxEventAge(lastPollTime);
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
@@ -101,6 +116,7 @@ const pollNFTEvents = async ({
       dbClient,
       lastPollTime: newPollTime,
       currentPolls: 0,
+      minId: lastPolledId,
     });
   }
 
@@ -111,6 +127,7 @@ const pollNFTEvents = async ({
       dbClient,
       lastPollTime: newPollTime,
       currentPolls: currentPolls + 1,
+      minId: lastPolledId,
     });
   }
 
@@ -125,6 +142,7 @@ const pollNFTEvents = async ({
     dbClient,
     lastPollTime: newPollTime,
     currentPolls: 0,
+    minId: lastPolledId,
   });
 };
 
