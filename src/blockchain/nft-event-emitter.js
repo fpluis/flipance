@@ -16,6 +16,13 @@ import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
+const {
+  MARKETPLACES,
+  ETHEREUM_NETWORK = "homestead",
+  // The default rate limit without an API key
+  LOOKSRARE_RATE_LIMIT = 120,
+} = process.env;
+
 const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
 const erc721Abi = JSON.parse(readFileSync("data/erc721Abi.json"));
@@ -28,16 +35,16 @@ const openSeaSSAddress = "0x495f947276749ce646f68ac8c248420045cb7b5e";
 const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
 const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
 
-const LR_SLICE_SIZE = 60;
-const POLL_COLLECTION_SLICE_DELAY = 30 * 1000;
+const LR_SLICE_SIZE = LOOKSRARE_RATE_LIMIT;
+const POLL_COLLECTION_SLICE_DELAY = (LR_SLICE_SIZE / 2) * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
+const ONE_MINUTE = 60 * 1000;
 
 const emptyContract = { removeAllListeners: () => {} };
 
 const minutesAgo = (minutes = 2) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
-const { MARKETPLACES, ETHEREUM_NETWORK = "homestead" } = process.env;
 const ALLOWED_MARKETPLACE_IDS =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
@@ -849,6 +856,7 @@ export default (ethProvider, collections = []) => {
    * returned by the _call_ parameter.
    */
   const pollLRAPI = async (collections, call, handleResponse, queryType) => {
+    const pollStarted = new Date();
     await Promise.all(
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
@@ -866,8 +874,14 @@ export default (ethProvider, collections = []) => {
       })
     );
     const otherCollections = collections.slice(LR_SLICE_SIZE);
+    const pollEnded = new Date();
+    const msElapsed = pollEnded - pollStarted;
+    console.log(`Polling '${queryType}' took ${msElapsed}`);
     if (otherCollections.length > 0) {
-      await sleep(POLL_COLLECTION_SLICE_DELAY);
+      if (ONE_MINUTE > msElapsed) {
+        await sleep(ONE_MINUTE - msElapsed);
+      }
+
       return pollLRAPI(otherCollections, call, handleResponse);
     }
 
@@ -1023,11 +1037,31 @@ export default (ethProvider, collections = []) => {
     }
 
     if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
-      await pollLRFloors(collectionsToPoll);
-      await sleep(POLL_COLLECTION_SLICE_DELAY);
-      await pollLRListings(collectionsToPoll);
-      await sleep(POLL_COLLECTION_SLICE_DELAY);
-      await pollLRCollectionOffers(collectionsToPoll);
+      console.log(`Polling collections ${JSON.stringify(collectionsToPoll)}`);
+      const pollMethods = [
+        pollLRFloors,
+        pollLRListings,
+        pollLRCollectionOffers,
+      ];
+      let index = 0;
+      while (index < pollMethods.length) {
+        const pollStarted = new Date();
+        const method = pollMethods[index];
+        await method(collectionsToPoll);
+        const pollEnded = new Date();
+        const msElapsed = pollEnded - pollStarted;
+        console.log(`Time difference since last poll: ${msElapsed}`);
+        if (msElapsed > 0 && msElapsed < POLL_COLLECTION_SLICE_DELAY) {
+          console.log(
+            `Waiting ${
+              POLL_COLLECTION_SLICE_DELAY - msElapsed
+            } before polling LR again`
+          );
+          await sleep(POLL_COLLECTION_SLICE_DELAY - msElapsed);
+        }
+
+        index += 1;
+      }
     } else {
       await sleep(POLL_COLLECTION_SLICE_DELAY * 3);
     }
