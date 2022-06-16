@@ -319,7 +319,7 @@ export default (ethProvider, collections = []) => {
    * @property {String} to - The address that receives the NFT.
    * @return {ParsedEvent}
    */
-  const parseEvent = async (event, eventType) => {
+  const parseEvent = async (event, eventType, contractAddress) => {
     const transactionReceipt = await event
       .getTransactionReceipt()
       .catch((error) => {
@@ -349,31 +349,60 @@ export default (ethProvider, collections = []) => {
       let indexInLogs = logs.findIndex(
         ({ logIndex }) => logIndex === event.logIndex
       );
-      // Traverse the tx's logs backwards to find the transfer log
-      while (indexInLogs >= 0) {
-        const parsedTransferLog = await parseTransferLog(
-          logs,
-          indexInLogs
-          // eslint-disable-next-line no-loop-func
-        ).catch((error) => {
-          logMessage(
-            `Error parsing transfer log ${JSON.stringify({
-              logs,
-              indexInLogs,
-            })}`,
-            "error",
-            error
-          );
-          return null;
-        });
-        if (parsedTransferLog != null) {
-          return {
-            ...props,
-            ...parsedTransferLog,
-          };
-        }
+      if (contractAddress === ethContracts.openSeaSeaport[ETHEREUM_NETWORK]) {
+        // Traverse the tx's logs forwards to find the transfer log
+        while (indexInLogs < logs.length) {
+          const parsedTransferLog = await parseTransferLog(
+            logs,
+            indexInLogs
+            // eslint-disable-next-line no-loop-func
+          ).catch((error) => {
+            logMessage(
+              `Error parsing transfer log ${JSON.stringify({
+                logs,
+                indexInLogs,
+              })}`,
+              "warning",
+              error
+            );
+            return null;
+          });
+          if (parsedTransferLog != null) {
+            return {
+              ...props,
+              ...parsedTransferLog,
+            };
+          }
 
-        indexInLogs -= 1;
+          indexInLogs += 1;
+        }
+      } else {
+        // Traverse the tx's logs backwards to find the transfer log
+        while (indexInLogs >= 0) {
+          const parsedTransferLog = await parseTransferLog(
+            logs,
+            indexInLogs
+            // eslint-disable-next-line no-loop-func
+          ).catch((error) => {
+            logMessage(
+              `Error parsing transfer log ${JSON.stringify({
+                logs,
+                indexInLogs,
+              })}`,
+              "warning",
+              error
+            );
+            return null;
+          });
+          if (parsedTransferLog != null) {
+            return {
+              ...props,
+              ...parsedTransferLog,
+            };
+          }
+
+          indexInLogs -= 1;
+        }
       }
 
       return props;
@@ -432,6 +461,85 @@ export default (ethProvider, collections = []) => {
         seller,
         buyer,
         price: Number(etherUtils.formatEther(price)),
+        blockchain: "eth",
+        ...parsedEvent,
+      });
+    });
+    contract.on(contract.filters.OrderCancelled(), async (...args) => {
+      const event = args[args.length - 1];
+      const { transactionHash } = event;
+      const parsedEvent = await parseEvent(event, "cancelOrder");
+      emit("cancelOrder", {
+        transactionHash,
+        marketplace,
+        blockchain: "eth",
+        ...parsedEvent,
+      });
+    });
+    return contract;
+  };
+
+  /**
+   * Creates event listeners for OpenSea's Seaport on-chain events that call
+   * the supplied _emit_ function with an NFTEvent.
+   * @return {ethers.Contract} contract - The ethers.js contract to be
+   * able to destroy the event listeners.
+   */
+  const seaportEventListener = () => {
+    const marketplace = "openSea";
+    const { [ETHEREUM_NETWORK]: contractAddress, abi } =
+      ethContracts.openSeaSeaport;
+    if (contractAddress == null) {
+      console.log(`No address set for OpenSea on network ${ETHEREUM_NETWORK}`);
+      return emptyContract;
+    }
+
+    const contract = new ethers.Contract(contractAddress, abi, ethProvider);
+    contract.on(contract.filters.OrderFulfilled(), async (...args) => {
+      const event = args[args.length - 1];
+      const {
+        transactionHash,
+        args: { offerer, recipient, consideration, offer },
+      } = event;
+      const parsedEvent = await parseEvent(event, "acceptAsk", contractAddress);
+      const tx = await event.getTransaction().catch(() => {
+        return {};
+      });
+      let seller;
+      let buyer;
+      let eventType;
+      let sellerProfitHex;
+      if (
+        parsedEvent.from &&
+        parsedEvent.from === parsedEvent.initiator.toLowerCase()
+      ) {
+        eventType = "acceptOffer";
+        const { amount = 0 } = offer.length === 0 ? {} : offer[0];
+        sellerProfitHex = amount;
+        buyer = offerer;
+        seller = recipient;
+      } else {
+        eventType = "acceptAsk";
+        const { amount = 0 } =
+          consideration.length === 0 ? {} : consideration[0];
+        sellerProfitHex = amount;
+        buyer = recipient;
+        seller = offerer;
+      }
+
+      const sellerProfit = Number(etherUtils.formatEther(sellerProfitHex));
+      emit(eventType, {
+        transactionHash,
+        marketplace,
+        seller,
+        buyer,
+        sellerProfit,
+        price:
+          tx.value == null
+            ? sellerProfit == null
+              ? 0
+              : sellerProfit
+            : Number(etherUtils.formatEther(tx.value.toString())),
         blockchain: "eth",
         ...parsedEvent,
       });
@@ -745,10 +853,11 @@ export default (ethProvider, collections = []) => {
       collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
         const { [queryType]: maxAge = minutesAgo(2) } = collectionTimes;
+        const newPollTime = new Date();
         return call({ collection, maxAge })
           .then((response) => {
             handleResponse(collection, response, maxAge);
-            collectionTimes[queryType] = new Date();
+            collectionTimes[queryType] = newPollTime;
             polledTimes[collection] = collectionTimes;
           })
           .catch((error) => {
@@ -811,12 +920,7 @@ export default (ethProvider, collections = []) => {
         });
     };
 
-    return pollLRAPI(
-      collections,
-      getCollectionFloor,
-      handleResponse,
-      "listings"
-    );
+    return pollLRAPI(collections, getCollectionFloor, handleResponse, "floors");
   };
 
   /**
@@ -934,6 +1038,7 @@ export default (ethProvider, collections = []) => {
   eventEmitter.start = () => {
     contracts = [
       { listener: openSeaEventListener, id: "openSea" },
+      { listener: seaportEventListener, id: "openSea" },
       { listener: looksRareEventListener, id: "looksRare" },
       { listener: raribleEventListener, id: "rarible" },
       { listener: foundationEventListener, id: "foundation" },
