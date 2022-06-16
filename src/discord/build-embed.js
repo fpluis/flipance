@@ -453,6 +453,16 @@ export default async (args) => {
     ]);
   }
 
+  if (tokenId) {
+    embed.fields.push([
+      {
+        name: "Token Id",
+        value: `${tokenId}`,
+        inline: true,
+      },
+    ]);
+  }
+
   if (buyerAddress) {
     embed.fields.push({
       name: "Buyer",
