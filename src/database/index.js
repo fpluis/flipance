@@ -124,7 +124,7 @@ export const createDb = async ({
 };
 
 const createTableQueries = [
-  `CREATE TYPE alert_type AS ENUM ('wallet', 'collection')`,
+  `CREATE TYPE alert_type AS ENUM ('wallet', 'server', 'collection')`,
   `CREATE TABLE IF NOT EXISTS settings (\
     id serial PRIMARY KEY,\
     max_offer_floor_difference DOUBLE PRECISION,\
@@ -210,6 +210,7 @@ const createTableQueries = [
 ];
 
 const patchDBQueries = [
+  `ALTER TYPE alert_type ADD VALUE 'server';`,
   `ALTER TABLE nft_events DROP CONSTRAINT nft_events_blockchain_hash_event_type_collection_token_id_b_key;`,
   `ALTER TABLE nft_events ADD CONSTRAINT unique_event UNIQUE (hash, event_type, collection, token_id);`,
 ];

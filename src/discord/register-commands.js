@@ -35,9 +35,7 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("walletalert")
-    .setDescription(
-      "Creates an alert to track a wallet's NFT activity across marketplaces."
-    )
+    .setDescription("Notifies you of a wallet's NFT activity.")
     .addStringOption((option) =>
       option
         .setName("address")
@@ -53,9 +51,25 @@ const commands = [
     ),
   new SlashCommandBuilder()
     .setName("collectionalert")
-    .setDescription(
-      "Notifies you of a collection's NFT activity across marketplaces."
+    .setDescription("Notifies you of a collection's NFT activity.")
+    .addStringOption((option) =>
+      option
+        .setName("address")
+        .setDescription(
+          "The Ethereum address of the collection you want to track."
+        )
+        .setRequired(true)
     )
+    .addStringOption((option) =>
+      option
+        .setName("nickname")
+        .setDescription(
+          `Collection's nickname (must have between 1-${MAX_NICKNAME_LENGTH} characters, no spaces).`
+        )
+    ),
+  new SlashCommandBuilder()
+    .setName("serveralert")
+    .setDescription("Notifies a server of a collection's NFT activity.")
     .addStringOption((option) =>
       option
         .setName("address")

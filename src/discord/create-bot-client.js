@@ -9,7 +9,7 @@ import minimist from "minimist";
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
 
-const MAX_MINUTE_DIFFERENCE = 3;
+const MAX_MINUTE_DIFFERENCE = 20;
 
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
@@ -86,10 +86,7 @@ const isAllowedByPreferences = ({
   }
 
   // Don't notify wallets of listings when they are not the sellers
-  if (
-    eventType === "listing" &&
-    !(address === seller || alertType === "collection")
-  ) {
+  if (eventType === "listing" && alertType === "wallet" && address !== seller) {
     return false;
   }
 
@@ -136,25 +133,24 @@ export default ({ dbClient, shardId, totalShards }) => {
       );
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
-        const isUserMessage = alertType === "wallet";
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
           const embed = await buildEmbed({
             ...event,
-            target: isUserMessage ? "user" : "server",
+            target: alertType === "server" ? "server" : "user",
           }).catch((error) => {
             logMessage(
               `Error building embed with args ${JSON.stringify({
                 ...event,
-                target: isUserMessage ? "user" : "server",
+                target: alertType === "server" ? "server" : "user",
               })}`,
               "error",
               error
             );
           });
           try {
-            const target = await (isUserMessage
-              ? discordClient.users.fetch(discordId)
-              : discordClient.channels.fetch(channelId));
+            const target = await (alertType === "server"
+              ? discordClient.channels.fetch(channelId)
+              : discordClient.users.fetch(discordId));
             target.send(embed).catch((error) => {
               logMessage(
                 `Error sending listing notification to ${channelId}/${discordId}`,

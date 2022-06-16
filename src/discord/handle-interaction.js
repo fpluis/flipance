@@ -57,7 +57,116 @@ const isValidNickname = (nickname) => nickname != null && !/\s/.test(nickname);
  * @param  {Object} params.dbClient - The initialized database client.
  * @return {void}
  */
-const handleCollectionAlert = async ({ dbClient, interaction }) => {
+const handleCollectionAlert = async ({
+  dbClient,
+  discordClient,
+  interaction,
+}) => {
+  const {
+    user: { id: discordId },
+  } = interaction;
+  await interaction.deferReply({
+    content: "Creating your alert...",
+    ephemeral: true,
+  });
+
+  let { object: user } = await dbClient.getUserByDiscordId({ discordId });
+  if (user == null) {
+    const { object: newUser } = await dbClient.createUser({
+      discordId,
+      type: "user",
+      tokens: [],
+    });
+    user = newUser;
+  }
+
+  const { objects: currentAlerts } = await dbClient.getUserAlerts({
+    discordId,
+  });
+  if (currentAlerts.length >= user.alertLimit) {
+    return interaction.editReply({
+      content:
+        "You have reached your alert limit. Please remove one of your existing alerts to add more alerts.",
+      ephemeral: true,
+    });
+  }
+
+  const address = interaction.options.getString("address");
+  if (!isValidAddress(address)) {
+    return interaction.editReply({
+      content: `Address "${address}" is invalid. Please introduce a valid address.`,
+      ephemeral: true,
+    });
+  }
+
+  const nickname = interaction.options.getString("nickname");
+  if (nickname != null && !isValidNickname(nickname)) {
+    return interaction.editReply({
+      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
+      ephemeral: true,
+    });
+  }
+
+  // The token id for collection alert is set to an empty string.
+  const tokens = [`${address}/`];
+  const { result } = await dbClient.createAlert({
+    userId: user.id,
+    discordId,
+    type: "collection",
+    address,
+    tokens,
+    nickname,
+  });
+  const nicknameDescription = nickname
+    ? ` with alert nickname "${nickname}"`
+    : "";
+  switch (result) {
+    case "success":
+      return discordClient.users.cache
+        .get(discordId)
+        .send(
+          `Notifications for collection "${address}"${nicknameDescription}  enabled. Please don't turn off your DMs on every server we share so we can keep messaging you.`
+        )
+        .then(() => {
+          return interaction.editReply({
+            content: `Collection alert successfully created for address ${address}${nicknameDescription}.`,
+            ephemeral: true,
+          });
+        })
+        .catch(() => {
+          return interaction.editReply({
+            content: `Collection alert successfully created for address ${address}${nicknameDescription}.\nYou have your DMs turned off. Please enable DMs on at least one server we share so we can notify you of a wallet's activity.`,
+            ephemeral: true,
+          });
+        });
+    case "nickname-too-long":
+      return interaction.editReply({
+        content: `The nickname is too long. Please give the alert a nickname less than ${MAX_NICKNAME_LENGTH} characters long.`,
+        ephemeral: true,
+      });
+    case "error":
+    case "missing-user":
+      return interaction.editReply({
+        content: `There was an error processing your request. Please try again later.`,
+        ephemeral: true,
+      });
+    case "already-exists":
+    default:
+      return interaction.editReply({
+        content: `You already have a collection alert for address ${address}.`,
+        ephemeral: true,
+      });
+  }
+};
+
+/**
+ * Handle the /serveralert slash command. Only users with the Admin permission in a discord server can create alerts for that server. This function will check that the address and/or nickname are correct and that an alert with the same address/nickname for the server doesn't already exist.
+ * @param  {Object} params
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @return {void}
+ */
+const handleServerAlert = async ({ dbClient, interaction }) => {
   const { guildId: discordId, channelId, memberPermissions } = interaction;
   await interaction.deferReply({
     content: "Creating your alert...",
@@ -115,17 +224,18 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
     userId: user.id,
     discordId,
     channelId,
-    type: "collection",
+    type: "server",
     address,
     tokens,
     nickname,
   });
+  const nicknameDescription = nickname
+    ? ` with alert nickname "${nickname}"`
+    : "";
   switch (result) {
     case "success":
       return interaction.editReply({
-        content: `Alert successfully created for address ${address}${
-          nickname ? ` with nickname ${nickname}.` : "."
-        }`,
+        content: `Server alert successfully created for address ${address}${nicknameDescription}`,
         ephemeral: true,
       });
     case "nickname-too-long":
@@ -135,6 +245,7 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
       });
     case "error":
     case "missing-user":
+      console.log(`Error creating the server alert: ${result}`);
       return interaction.editReply({
         content: `There was an error processing your request. Please try again later.`,
         ephemeral: true,
@@ -142,7 +253,7 @@ const handleCollectionAlert = async ({ dbClient, interaction }) => {
     case "already-exists":
     default:
       return interaction.editReply({
-        content: `You already have a collection alert for address ${address}.`,
+        content: `You already have a server alert for address ${address}.`,
         ephemeral: true,
       });
   }
@@ -164,12 +275,13 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
     content: "Fetching your alerts...",
     ephemeral: true,
   });
-  const [{ objects: currentAlerts }, { objects: guildAlerts }] =
-    await Promise.all([
+  const [{ objects: userAlerts }, { objects: guildAlerts }] = await Promise.all(
+    [
       dbClient.getUserAlerts({ discordId }),
       dbClient.getUserAlerts({ discordId: guildId }),
-    ]);
-  if (currentAlerts.length === 0 && guildAlerts.length === 0) {
+    ]
+  );
+  if (userAlerts.length === 0 && guildAlerts.length === 0) {
     return interaction.editReply({
       content:
         "You haven't set up any alerts yet. To create a wallet alert, use the /walletalert command with the wallet address you want to watch. To create a collection alert, use the /collectionalert with the with the collection address you want to watch.",
@@ -177,10 +289,12 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
     });
   }
 
-  const walletAlertList = currentAlerts.reduce(
-    (message, { nickname, address }) => {
+  const personalAlertList = userAlerts.reduce(
+    (message, { nickname, address, type }) => {
+      const typeDescription =
+        type === "wallet" ? `(wallet alert)` : `(collection alert)`;
       const fixedNickname = nickname == null ? "(no nickname)" : bold(nickname);
-      return `${message}\n${fixedNickname}: ${address}`;
+      return `${message}\n${fixedNickname}: ${address} ${typeDescription}`;
     },
     ""
   );
@@ -192,12 +306,12 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
     ""
   );
   let content;
-  if (currentAlerts.length === 0) {
+  if (userAlerts.length === 0) {
     content = `You have not set up any wallet alerts. These are the server's alerts:${collectionAlertList}.`;
   } else if (guildAlerts.length === 0) {
-    content = `These are your wallet alerts:${walletAlertList}.\n\nThere are no server alerts.`;
+    content = `These are your personal alerts:${personalAlertList}.\n\nThere are no server alerts.`;
   } else {
-    content = `These are your wallet alerts:${walletAlertList}.\n\nThese are the server's collection alerts:${collectionAlertList}.`;
+    content = `These are your personal alerts:${personalAlertList}.\n\nThese are the server's collection alerts:${collectionAlertList}.`;
   }
 
   return interaction.editReply({
@@ -251,10 +365,10 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
     });
   }
 
-  const nicknameOption = interaction.options.getString("nickname");
-  if (nicknameOption != null && !isValidNickname(nicknameOption)) {
+  const nickname = interaction.options.getString("nickname");
+  if (nickname != null && !isValidNickname(nickname)) {
     return interaction.editReply({
-      content: `Nickname "${nicknameOption}" contains spaces. Please, remove the spaces and try again.`,
+      content: `Nickname "${nickname}" contains spaces. Please, remove the spaces and try again.`,
       ephemeral: true,
     });
   }
@@ -264,27 +378,27 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
     type: "wallet",
     address,
     tokens: [],
-    nickname: nicknameOption ? nicknameOption.trim() : null,
+    nickname,
   });
-  const nicknameDescription = nicknameOption
-    ? ` with alert nickname "${nicknameOption}"`
+  const nicknameDescription = nickname
+    ? ` with alert nickname "${nickname}"`
     : "";
   switch (result) {
     case "success":
       return discordClient.users.cache
         .get(discordId)
         .send(
-          `Notifications for "${address}" enabled${nicknameDescription}. Please don't turn off your DMs on every server we share so we can keep messaging you.`
+          `Notifications for "${address}"${nicknameDescription} enabled. Please don't turn off your DMs on every server we share so we can keep messaging you.`
         )
         .then(() => {
           return interaction.editReply({
-            content: `Alert successfully created for address ${address}${nicknameDescription}.`,
+            content: `Wallet alert successfully created for address ${address}${nicknameDescription}.`,
             ephemeral: true,
           });
         })
         .catch(() => {
           return interaction.editReply({
-            content: `\nYou have your DMs turned off. Please enable DMs on at least one server we share so we can notify you of a wallet's activity.`,
+            content: `Wallet alert successfully created for address ${address}${nicknameDescription}.\nYou have your DMs turned off. Please enable DMs on at least one server we share so we can notify you of a wallet's activity.`,
             ephemeral: true,
           });
         });
@@ -763,6 +877,8 @@ const handleCommand = async (args) => {
       return handleWalletAlert(args);
     case "collectionalert":
       return handleCollectionAlert(args);
+    case "serveralert":
+      return handleServerAlert(args);
     case "deletealert":
       return handleDeleteAlert(args);
     case "settings":

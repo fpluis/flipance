@@ -24,7 +24,7 @@ Provides information about the bot and its commands.
 
 ## /walletalert
 
-Creates an alert to track a wallet's NFT activity across marketplaces. Parameters:
+Creates a personal alert to track a wallet's NFT activity across marketplaces. Parameters:
 - **address** (required): The Ethereum address of the wallet you want to track.
 - **nickname** (optional): Wallet's nickname (must have between 1-50 characters, no spaces)
 
@@ -34,13 +34,23 @@ Creates an alert to track a wallet's NFT activity across marketplaces. Parameter
 
 ## /collectionalert
 
-Creates an alert to track a collections's NFT activity across marketplaces. Parameters:
-- **address** (required): The Ethereum address of the wallet you want to track.
+Creates a personal alert to track a collections's NFT activity across marketplaces. Parameters:
+- **address** (required): The Ethereum address of the collection you want to track.
 - **nickname** (optional): Collection's nickname (must have between 1-50 characters, no spaces)
 
 ![](./assets/docs/collectionalert-1.PNG)
 
 ![](./assets/docs/collectionalert-2.PNG)
+
+## /serveralert
+
+Creates a server-wide alert to track a collections's NFT activity across marketplaces. Parameters:
+- **address** (required): The Ethereum address of the collection you want to track.
+- **nickname** (optional): Collection's nickname (must have between 1-50 characters, no spaces)
+
+![](./assets/docs/serveralert-1.PNG)
+
+![](./assets/docs/serveralert-2.PNG)
 
 ## /listalerts
 
