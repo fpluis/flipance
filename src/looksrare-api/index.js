@@ -15,7 +15,7 @@ const LR_COLLECTION_BID_STRATEGY_ADDRESS =
 const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
   "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
 
-const { ETHEREUM_NETWORK = "homestead" } = process.env;
+const { ETHEREUM_NETWORK = "homestead", LOOKSRARE_API_KEY } = process.env;
 
 const looksRareAPI =
   ETHEREUM_NETWORK === "homestead"
@@ -32,8 +32,13 @@ const minutesAgo = (minutes = 2) =>
  * the endpoint.
  * @return {Array} result - The result of the call.
  */
-const callLRWithRetries = (endpoint = "", retries = 3) =>
-  fetch(endpoint)
+const callLRWithRetries = (endpoint = "", retries = 3) => {
+  const options = {};
+  if (LOOKSRARE_API_KEY) {
+    options["X-Looks-Api-Key"] = LOOKSRARE_API_KEY;
+  }
+
+  return fetch(endpoint, options)
     .then((res) => res.json())
     .then(async (response) => {
       const { data, message, success } = response;
@@ -56,6 +61,7 @@ const callLRWithRetries = (endpoint = "", retries = 3) =>
 
       return [];
     });
+};
 
 /**
  * Get a collection's first N offers on LooksRare, sorted by price descending (the highest offer will be the first in the returned array). See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
