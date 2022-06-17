@@ -16,6 +16,7 @@ import {
 import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
 import { getDefaultProvider } from "ethers";
+import sleep from "../src/sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -28,7 +29,8 @@ const {
   ETHEREUM_NETWORK = "homestead",
 } = process.env;
 
-const POLL_USER_TOKENS_INTERVAL = 5 * 60 * 1000;
+// const CHECK_POLLED_COLLECTIONS_PERIOD = 1 * 60 * 1000;
+const UPDATE_ALERT_TOKENS_DELAY = 5 * 60 * 1000;
 
 const ethProvider = getDefaultProvider(ETHEREUM_NETWORK, {
   etherscan: ETHERSCAN_API_KEY,
@@ -98,7 +100,7 @@ const monitorBlockchainEvents = async ({
       if (
         type === "wallet" &&
         (syncedAt == null ||
-          new Date() - new Date(syncedAt) > POLL_USER_TOKENS_INTERVAL)
+          new Date() - new Date(syncedAt) > UPDATE_ALERT_TOKENS_DELAY)
       ) {
         const tokens = await nftClient.getAddressNFTs(address);
         alerts[index].tokens = tokens;
@@ -112,10 +114,8 @@ const monitorBlockchainEvents = async ({
     return alerts;
   };
 
-  const getCollectionsToPoll = async () => {
-    const { objects: alerts } = await dbClient.getAllAlerts();
-    const updatedAlerts = await updateAlertTokens(alerts);
-    const collectionMap = updatedAlerts.reduce((collectionMap, { tokens }) => {
+  const alertsToCollections = (alerts) => {
+    const collectionMap = alerts.reduce((collectionMap, { tokens }) => {
       tokens.forEach((token) => {
         const [collection] = token.split("/");
         if (collectionMap[collection] == null) {
@@ -128,10 +128,19 @@ const monitorBlockchainEvents = async ({
   };
 
   const handleOffer = async (event, { price: collectionFloor = 0 } = {}) => {
-    const { collection, marketplace, price, endsAt } = event;
-    const { object: currentOffer } = await dbClient.getCollectionOffer({
+    const {
       collection,
+      marketplace,
+      price,
+      tokenId,
+      endsAt,
+      hash: orderHash,
+    } = event;
+    const { object: currentOffer } = await dbClient.getOffer({
+      collection,
+      tokenId,
     });
+
     const {
       endsAt: currentOfferEndsAt = new Date("1970-01-01"),
       price: currentOfferPrice = 0,
@@ -142,16 +151,18 @@ const monitorBlockchainEvents = async ({
       currentOfferEndsAt < new Date().getTime()
     ) {
       isHighestOffer = true;
-      await dbClient.setCollectionOffer({
+      await dbClient.setOffer({
         collection,
         price,
         endsAt,
         marketplace,
+        tokenId,
       });
     }
 
     return dbClient.addNFTEvent({
       ...event,
+      orderHash,
       isHighestOffer,
       collectionFloor,
       floorDifference: computeFloorDifference(price, collectionFloor),
@@ -177,7 +188,7 @@ const monitorBlockchainEvents = async ({
       isNewFloor = false,
     } = event;
     if (
-      isNewFloor ||
+      (isNewFloor && endsAt !== currentEndsAt && price !== collectionFloor) ||
       collectionFloor === 0 ||
       price < collectionFloor ||
       currentEndsAt < new Date().getTime()
@@ -225,22 +236,22 @@ const monitorBlockchainEvents = async ({
     });
   };
 
-  const collections = await getCollectionsToPoll();
-  nftEventEmitter.poll(collections);
+  const pollAlertTokens = async (nftEventEmitter) => {
+    const { objects: alerts } = await dbClient.getAllAlerts();
+    const collections = alertsToCollections(alerts);
+    nftEventEmitter.setCollectionsToPoll(collections);
+    await updateAlertTokens(alerts);
+    await sleep(UPDATE_ALERT_TOKENS_DELAY);
+    return pollAlertTokens(nftEventEmitter);
+  };
+
   nftEventEmitter.start();
+  pollAlertTokens(nftEventEmitter);
   nftEventEmitter.on("event", handleNFTEvent);
-  nftEventEmitter.on("pollEnded", async () => {
-    nftEventEmitter.stop();
-    monitorBlockchainEvents({
-      dbClient,
-      nftClient,
-      nftEventEmitter,
-    });
-  });
 };
 
 const start = async () => {
-  console.log(`Starting polling node`);
+  logMessage({ message: `Starting polling node`, level: "info" });
   const dbClient = await createDbClient();
   const nftClient = await createNFTClient();
   const nftEventEmitter = createNFTEventEmitter(ethProvider, []);
@@ -250,13 +261,11 @@ const start = async () => {
 start();
 
 process.on("unhandledRejection", (error) => {
-  console.log(error);
-  logMessage(`Unhandled promise rejection`, "error", error);
+  logMessage({ message: `Unhandled promise rejection`, level: "error", error });
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
-  console.log(error);
-  logMessage(`Uncaught exception`, "error", error);
+  logMessage({ message: `Uncaught exception`, level: "error", error });
   process.exit(-1);
 });

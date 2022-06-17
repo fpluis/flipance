@@ -466,23 +466,23 @@ test("setAllowedMarketplaces on an existing alert using the nickname", async () 
   expect(alert.allowedMarketplaces).toEqual(["openSea"]);
 });
 
-test("setCollectionOffer without arguments", async () => {
-  const { result, object: offer } = await dbClient.setCollectionOffer();
+test("setOffer without arguments", async () => {
+  const { result, object: offer } = await dbClient.setOffer();
   expect(result).toBe("missing-arguments");
   expect(offer).toBe(null);
 });
 
-test("setCollectionOffer with a new collection", async () => {
+test("setOffer with a new collection", async () => {
   const now = new Date();
   const tomorrow = now.setDate(now.getDate() + 1);
-  const { result } = await dbClient.setCollectionOffer({
+  const { result } = await dbClient.setOffer({
     collection: collection1,
     price: 1,
     endsAt: tomorrow,
     marketplace: "looksRare",
   });
   expect(result).toBe("success");
-  const { object: offer } = await dbClient.getCollectionOffer({
+  const { object: offer } = await dbClient.getOffer({
     collection: collection1,
   });
   expect(offer).toMatchObject({
@@ -493,10 +493,10 @@ test("setCollectionOffer with a new collection", async () => {
   });
 });
 
-test("setCollectionOffer overwriting an existing collection", async () => {
+test("setOffer overwriting an existing collection", async () => {
   const now = new Date();
   const tomorrow = now.setDate(now.getDate() + 1);
-  const { result: firstResult } = await dbClient.setCollectionOffer({
+  const { result: firstResult } = await dbClient.setOffer({
     collection: collection1,
     price: 1,
     endsAt: tomorrow,
@@ -505,16 +505,17 @@ test("setCollectionOffer overwriting an existing collection", async () => {
   expect(firstResult).toBe("success");
   const now2 = new Date();
   const inTwoDates = now2.setDate(now2.getDate() + 2);
-  const { result: secondResult } = await dbClient.setCollectionOffer({
+  const { result: secondResult } = await dbClient.setOffer({
     collection: collection1,
     price: 4,
     endsAt: inTwoDates,
     marketplace: "looksRare",
   });
   expect(secondResult).toBe("success");
-  const { objects: offers } = await dbClient.getAllCollectionOffers();
-  expect(offers.length).toBe(1);
-  expect(offers[0]).toMatchObject({
+  const { object: offer } = await dbClient.getOffer({
+    collection: collection1,
+  });
+  expect(offer).toMatchObject({
     collection: collection1,
     price: 4,
     endsAt: new Date(inTwoDates),

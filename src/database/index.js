@@ -118,7 +118,7 @@ export const createDb = async ({
   });
 
   await client.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8'`);
-  console.log(`Created DB "${dbName}"`);
+  logMessage({ message: `Created DB "${dbName}"` });
   await client.release();
   return pool.end().then(() => true);
 };
@@ -192,6 +192,7 @@ const createTableQueries = [
     event_type SMALLINT,\
     blockchain SMALLINT NOT NULL,\
     marketplace SMALLINT,\
+    composite_identifier TEXT,\
     UNIQUE (hash, event_type, collection, token_id),\
     collection CHAR(42),\
     initiator CHAR(42),\
@@ -233,7 +234,7 @@ const patchDB = async ({
   password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 }) => {
-  console.log(`Patch DB`);
+  logMessage({ message: `Patch DB` });
   const pool = new Pool({
     host,
     port,
@@ -252,7 +253,11 @@ const patchDB = async ({
   await Promise.all(
     patchDBQueries.map((query) =>
       client.query(query).catch((error) => {
-        logMessage(`Error handling query "${query}":`, "warning", error);
+        logMessage({
+          message: `Error handling query "${query}":`,
+          level: "warning",
+          error,
+        });
       })
     )
   ).catch(() => {});
@@ -278,7 +283,7 @@ export const setUpDb = async ({
   password = POSTGRES_PASSWORD,
   dbName = DB_NAME,
 } = {}) => {
-  console.log(`Set up DB`);
+  logMessage({ message: `Set up DB` });
   const pool = new Pool({
     host,
     port,
@@ -297,7 +302,11 @@ export const setUpDb = async ({
   await Promise.all(
     createTableQueries.map((query) =>
       client.query(query).catch((error) => {
-        logMessage(`Error handling query "${query}":`, "warning", error);
+        logMessage({
+          message: `Error handling query "${query}":`,
+          level: "warning",
+          error,
+        });
       })
     )
   );
@@ -385,7 +394,7 @@ export const removeDb = async ({
     throw error;
   });
   await client.query(`DROP DATABASE "${dbName}"`).catch((error) => {
-    console.log(`Error dropping db`, error);
+    logMessage({ message: `Error dropping db`, level: "error", error });
   });
   await client.release();
   return pool.end();
@@ -684,6 +693,7 @@ const toShardingInfoObject = (shardingInfo) => {
  * @property {Date|null} startsAt - The Date when the event happened.
  * @property {Date|null} endsAt - The Date when the event stops.
  * @property {String|null} tokenId - The id of the token involved in the event. If it's a collection event (i.e. collection offer) or an event without token id (i.e. cancel order), it will will be an empty string.
+ * @property {String|null} compositeIdentifier - A string with the shape collection/tokenId that uniquely identifies the token.
  * @property {EventType|null} eventType - The type of event. See data/nft-events.json for the complete list.
  * @property {Blockchain|null} blockchain - The blockchain's id
  * @property {Marketplace|null} marketplace - The id of the marketplace where this floor was detected.
@@ -716,6 +726,7 @@ const toNFTEventObject = (nftEvent) => {
     blockchain,
     standard,
     token_id: tokenId,
+    composite_identifier: compositeIdentifier,
     metadata_uri: metadataUri,
     is_highest_offer: isHighestOffer = false,
     floor_difference: floorDifference,
@@ -750,6 +761,7 @@ const toNFTEventObject = (nftEvent) => {
     floorDifference: Number(floorDifference),
     collectionFloor,
     tokenId,
+    compositeIdentifier,
     metadataUri,
   };
 };
@@ -782,11 +794,15 @@ export const createDbClient = async ({
 
   pool.on("error", (error) => {
     console.error("Database client error", error);
-    logMessage(`Database client error`, "error", error);
+    logMessage({ message: `Database client error`, level: "error", error });
   });
 
   const client = await pool.connect().catch((error) => {
-    logMessage(`Database client connection error`, "error", error);
+    logMessage({
+      message: `Database client connection error`,
+      level: "error",
+      error,
+    });
     throw error;
   });
 
@@ -821,11 +837,11 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting user by discord id ${discordId}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting user by discord id ${discordId}`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -990,15 +1006,17 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error setting an alert's nickname with args ${JSON.stringify({
-            discordId,
-            address,
-            nickname,
-          })}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error setting an alert's nickname with args ${JSON.stringify(
+            {
+              discordId,
+              address,
+              nickname,
+            }
+          )}`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1039,15 +1057,15 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error deleting alert with args ${JSON.stringify({
+        logMessage({
+          message: `Error deleting alert with args ${JSON.stringify({
             discordId,
             address,
             nickname,
           })}`,
-          "error",
-          error
-        );
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1087,11 +1105,11 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toAlertObject) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting alerts by address "${address}"`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting alerts by address "${address}"`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1124,14 +1142,16 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toAlertObject) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting alerts by nickname with args ${JSON.stringify({
-            discordId,
-            nickname,
-          })}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting alerts by nickname with args ${JSON.stringify(
+            {
+              discordId,
+              nickname,
+            }
+          )}`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1160,7 +1180,11 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(`Error getting all alerts`, "error", error);
+        logMessage({
+          message: `Error getting all alerts`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1192,11 +1216,11 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toAlertObject) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting user alerts with discordId "${discordId}"`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting user alerts with discordId "${discordId}"`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1229,14 +1253,14 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error setting an alert's tokens with args ${JSON.stringify({
+        logMessage({
+          message: `Error setting an alert's tokens with args ${JSON.stringify({
             id,
             tokens,
           })}`,
-          "error",
-          error
-        );
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1300,16 +1324,18 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error setting max floor difference with args ${JSON.stringify({
-            discordId,
-            address,
-            nickname,
-            maxOfferFloorDifference,
-          })}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error setting max floor difference with args ${JSON.stringify(
+            {
+              discordId,
+              address,
+              nickname,
+              maxOfferFloorDifference,
+            }
+          )}`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1368,16 +1394,16 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error setting allowed events with args ${JSON.stringify({
+        logMessage({
+          message: `Error setting allowed events with args ${JSON.stringify({
             discordId,
             address,
             nickname,
             allowedEvents,
           })}`,
-          "error",
-          error
-        );
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1436,40 +1462,18 @@ export const createDbClient = async ({
         };
       })
       .catch((error) => {
-        logMessage(
-          `Error setting allowed marketplaces with args ${JSON.stringify({
-            discordId,
-            address,
-            nickname,
-            allowedMarketplaces,
-          })}`,
-          "error",
-          error
-        );
-        return { result: "error", object: null };
-      });
-  };
-
-  /**
-   *
-   * Get all the collection offers in the database.
-   * @typedef {("success"|"missing-arguments"|"error")} OfferResultType - The result of executing the query.
-   * @typedef {Object} OffersResponse - The responses returned by database functions that affect multiple offers.
-   * @property {OfferResultType} result - The query's result.
-   * @property {Array[Offer]} objects - The new offers.
-   * @return {OffersResponse} response
-   */
-  const getAllCollectionOffers = () => {
-    return client
-      .query(
-        `SELECT * FROM offers\
-    WHERE token_id = ''`
-      )
-      .then(({ rows }) => {
-        return { result: "success", objects: rows.map(toOfferObject) };
-      })
-      .catch((error) => {
-        logMessage(`Error getting all collection offers`, "error", error);
+        logMessage({
+          message: `Error setting allowed marketplaces with args ${JSON.stringify(
+            {
+              discordId,
+              address,
+              nickname,
+              allowedMarketplaces,
+            }
+          )}`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1485,45 +1489,54 @@ export const createDbClient = async ({
    * @property {CollectionFloor|null} object - The collection floor.
    * @return {CollectionFloorResponse} response
    */
-  const getCollectionOffer = ({ collection } = {}) => {
+  const getOffer = ({ collection, tokenId = "" } = {}) => {
     if (collection == null) {
       return { result: "missing-arguments", object: null };
     }
 
+    const tokenIds = tokenId == null ? [""] : [tokenId, ""];
     return client
       .query(
         `SELECT * FROM offers\
-      WHERE collection = $1 AND token_id = $2`,
-        [collection.toLowerCase(), ""]
+      WHERE collection = $1 AND token_id = ANY($2::TEXT[])`,
+        [collection.toLowerCase(), tokenIds]
       )
       .then(({ rows }) => {
+        if (rows.length > 1) {
+          const sortedByPrice = rows.sort(
+            ({ price: price1 }, { price: price2 }) => price2 - price1
+          );
+          return { result: "success", object: toOfferObject(sortedByPrice[0]) };
+        }
+
         return { result: "success", object: toOfferObject(rows[0]) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting collection offer with args ${JSON.stringify({
+        logMessage({
+          messages: `Error getting collection offer with args ${JSON.stringify({
             collection,
           })}`,
-          "error",
-          error
-        );
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
 
   /**
    *
-   * Create a collection-wide offer.
+   * Create a new highest offer for a collection and/or specific token.
    * @typedef {Object} OfferResponse - The responses returned by offer database functions.
    * @property {OfferResultType} result - The query's result.
    * @property {Offer|null} object - The new offer.
    * @return {OfferResponse} response
    */
-  const setCollectionOffer = ({
+  const setOffer = ({
     collection,
     price,
     endsAt,
     marketplace = "looksRare",
+    tokenId = "",
   } = {}) => {
     if (collection == null || price == null || endsAt == null) {
       return { result: "missing-arguments", object: null };
@@ -1535,7 +1548,7 @@ export const createDbClient = async ({
       new Date(endsAt),
       new Date(),
       serializeMarketplace(marketplace),
-      "",
+      tokenId == null ? "" : tokenId,
     ];
     return client
       .query(
@@ -1556,16 +1569,18 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (constraint !== "offers_pkey") {
-          logMessage(
-            `Error setting collection offer with args ${JSON.stringify({
-              collection,
-              price,
-              endsAt,
-              marketplace,
-            })}`,
-            "error",
-            error
-          );
+          logMessage({
+            message: `Error setting collection offer with args ${JSON.stringify(
+              {
+                collection,
+                price,
+                endsAt,
+                marketplace,
+              }
+            )}`,
+            level: "error",
+            error,
+          });
         }
 
         return {
@@ -1602,11 +1617,11 @@ export const createDbClient = async ({
         return { result: "success", object: toCollectionFloorObject(rows[0]) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting collection floor of "${collection}"`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting collection floor of "${collection}"`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1650,16 +1665,18 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (constraint !== "floor_prices_pkey") {
-          logMessage(
-            `Error setting collection floor with args ${JSON.stringify({
-              collection,
-              price,
-              endsAt,
-              marketplace,
-            })}`,
-            "error",
-            error
-          );
+          logMessage({
+            messages: `Error setting collection floor with args ${JSON.stringify(
+              {
+                collection,
+                price,
+                endsAt,
+                marketplace,
+              }
+            )}`,
+            level: "error",
+            error,
+          });
         }
 
         return {
@@ -1703,6 +1720,7 @@ export const createDbClient = async ({
       collectionFloor,
       floorDifference,
     } = nftEvent;
+
     // At least one id is necessary to associate an alert to a user
     if (
       (transactionHash == null && orderHash == null) ||
@@ -1782,10 +1800,6 @@ export const createDbClient = async ({
         values
       )
       .then(({ rows }) => {
-        if (eventType === "listing") {
-          console.log(`Add new event to DB: ${JSON.stringify(rows)}`);
-        }
-
         return {
           result: rows.length > 0 ? "success" : "error",
           object: toNFTEventObject(rows[0]),
@@ -1796,11 +1810,13 @@ export const createDbClient = async ({
         if (
           constraint !== "nft_events_hash_event_type_collection_token_id_key"
         ) {
-          logMessage(
-            `Error creating NFT event with args ${JSON.stringify(nftEvent)}`,
-            "error",
-            error
-          );
+          logMessage({
+            message: `Error creating NFT event with args ${JSON.stringify(
+              nftEvent
+            )}`,
+            level: "error",
+            error,
+          });
           return { result: "warning", objects: [] };
         }
 
@@ -1840,11 +1856,11 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toNFTEventObject) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting NFT events since ${createdAt}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting NFT events since ${createdAt}`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1880,7 +1896,7 @@ export const createDbClient = async ({
             LEFT JOIN settings AS user_settings\
             ON user_settings.id = (\
               SELECT settings_id FROM users WHERE users.id = alerts.user_id)
-          WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection\
+          WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection OR alerts.address = nft_events.initiator OR CONCAT(nft_events.collection, '/', nft_events.token_id) = ANY(alerts.tokens)\
         ) alerts ON true\
         WHERE nft_events.created_at >= $1 AND nft_events.id > $2\
         ORDER BY created_at DESC`,
@@ -1890,11 +1906,11 @@ export const createDbClient = async ({
         return { result: "success", objects: rows.map(toNFTEventObject) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting watched NFT events since ${createdAt}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting watched NFT events since ${createdAt}`,
+          level: "error",
+          error,
+        });
         return { result: "error", objects: [] };
       });
   };
@@ -1923,15 +1939,17 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (constraint !== "sharding_info_pkey") {
-          logMessage(
-            `Error setting collection offer with args ${JSON.stringify({
-              shardId,
-              instanceName,
-              totalShards,
-            })}`,
-            "error",
-            error
-          );
+          logMessage({
+            message: `Error setting collection offer with args ${JSON.stringify(
+              {
+                shardId,
+                instanceName,
+                totalShards,
+              }
+            )}`,
+            level: "error",
+            error,
+          });
         }
 
         return {
@@ -1957,11 +1975,11 @@ export const createDbClient = async ({
         return { result: "success", object: toShardingInfoObject(rows[0]) };
       })
       .catch((error) => {
-        logMessage(
-          `Error getting sharding info of "${instanceName}"`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error getting sharding info of "${instanceName}"`,
+          level: "error",
+          error,
+        });
         return { result: "error", object: null };
       });
   };
@@ -1990,9 +2008,8 @@ export const createDbClient = async ({
     setMaxFloorDifference,
     setAllowedEvents,
     setAllowedMarketplaces,
-    getCollectionOffer,
-    getAllCollectionOffers,
-    setCollectionOffer,
+    getOffer,
+    setOffer,
     getCollectionFloor,
     setCollectionFloor,
     addNFTEvent,

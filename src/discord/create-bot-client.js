@@ -51,14 +51,7 @@ const {
  * @return {Boolean}
  */
 const isAllowedByPreferences = ({
-  event: {
-    marketplace,
-    eventType,
-    floorDifference,
-    seller,
-    createdAt,
-    startsAt,
-  },
+  event,
   watcher: {
     allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
@@ -68,6 +61,16 @@ const isAllowedByPreferences = ({
   } = {},
   maxEventAge,
 }) => {
+  const {
+    marketplace,
+    eventType,
+    floorDifference,
+    seller,
+    createdAt,
+    startsAt,
+    tokenId,
+    isHighestOffer,
+  } = event;
   if (
     createdAt < maxEventAge ||
     minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE ||
@@ -77,12 +80,18 @@ const isAllowedByPreferences = ({
     return false;
   }
 
-  if (eventType === "offer" && floorDifference != null) {
-    if (floorDifference <= 0) {
-      return true;
+  if (eventType === "offer") {
+    if (!isHighestOffer || (alertType === "server" && tokenId != null)) {
+      return false;
     }
 
-    return 100 * floorDifference < Number(maxOfferFloorDifference);
+    if (floorDifference != null) {
+      if (floorDifference <= 0) {
+        return true;
+      }
+
+      return 100 * floorDifference < Number(maxOfferFloorDifference);
+    }
   }
 
   // Don't notify wallets of listings when they are not the sellers
@@ -108,7 +117,7 @@ export default ({ dbClient, shardId, totalShards }) => {
     discordClient.login(argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN);
 
     if (argv.test) {
-      console.log(`Starting the client in TEST mode`);
+      logMessage({ message: `Starting the client in TEST mode` });
     }
 
     discordClient.setMaxEventAge = (age = new Date()) => {
@@ -126,11 +135,6 @@ export default ({ dbClient, shardId, totalShards }) => {
         return Promise.resolve();
       }
 
-      console.log(
-        `About to send out event ${JSON.stringify(
-          event
-        )}. Max event age allowed: ${maxEventAge}`
-      );
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
@@ -138,34 +142,34 @@ export default ({ dbClient, shardId, totalShards }) => {
             ...event,
             target: alertType === "server" ? "server" : "user",
           }).catch((error) => {
-            logMessage(
-              `Error building embed with args ${JSON.stringify({
+            logMessage({
+              message: `Error building embed with args ${JSON.stringify({
                 ...event,
                 target: alertType === "server" ? "server" : "user",
               })}`,
-              "error",
-              error
-            );
+              level: "error",
+              error,
+            });
           });
           try {
             const target = await (alertType === "server"
               ? discordClient.channels.fetch(channelId)
               : discordClient.users.fetch(discordId));
             target.send(embed).catch((error) => {
-              logMessage(
-                `Error sending listing notification to ${channelId}/${discordId}`,
-                "error",
-                error
-              );
+              logMessage({
+                message: `Error sending listing notification to ${channelId}/${discordId}`,
+                level: "error",
+                error,
+              });
             });
           } catch (error) {
-            logMessage(
-              `Error handling listing with args ${JSON.stringify({
+            logMessage({
+              message: `Error handling listing with args ${JSON.stringify({
                 ...event,
               })}`,
-              "error",
-              error
-            );
+              level: "error",
+              error,
+            });
           }
         }
       });
@@ -174,18 +178,22 @@ export default ({ dbClient, shardId, totalShards }) => {
     };
 
     discordClient.once("ready", async () => {
-      console.log(`Logged in as ${discordClient.user.tag}!`);
+      logMessage({ message: `Logged in as ${discordClient.user.tag}` });
       discordClient.on("interactionCreate", (interaction) => {
         handleInteraction({ discordClient, dbClient }, interaction);
       });
 
       discordClient.on("error", (error) => {
-        logMessage(`Discord client error`, "error", error);
+        logMessage({ message: `Discord client error`, level: "error", error });
         reject(error);
       });
 
       discordClient.on("shardError", (error) => {
-        logMessage(`Discord client shard error`, "error", error);
+        logMessage({
+          message: `Discord client shard error`,
+          level: "error",
+          error,
+        });
         reject(error);
       });
 
@@ -193,11 +201,11 @@ export default ({ dbClient, shardId, totalShards }) => {
         try {
           handleNFTEvent(event);
         } catch (error) {
-          logMessage(
-            `Error handling NFT event ${JSON.stringify(event)}`,
-            "error",
-            error
-          );
+          logMessage({
+            message: `Error handling NFT event ${JSON.stringify(event)}`,
+            level: "error",
+            error,
+          });
           reject(error);
         }
       });
@@ -206,7 +214,7 @@ export default ({ dbClient, shardId, totalShards }) => {
     });
 
     discordClient.on("guildCreate", (guild) => {
-      console.log(`Guild create event: ${guild.id}`);
+      logMessage({ message: `New server added the bot: ${guild.id}` });
       registerCommands(guild.id);
     });
   });

@@ -6,8 +6,8 @@ import dotenv from "dotenv";
 import EventEmitter from "events";
 import {
   getCollectionFloor,
-  getCollectionListings,
   getCollectionOffers,
+  getEvents,
 } from "../looksrare-api/index.js";
 // eslint-disable-next-line no-unused-vars
 import { ethers, providers, utils as etherUtils } from "ethers";
@@ -35,10 +35,10 @@ const openSeaSSAddress = "0x495f947276749ce646f68ac8c248420045cb7b5e";
 const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
 const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
 
-const LR_SLICE_SIZE = LOOKSRARE_RATE_LIMIT;
-const POLL_COLLECTION_SLICE_DELAY = (LR_SLICE_SIZE / 2) * 1000;
+const LR_SLICE_SIZE = 40;
+const POLL_LR_ORDERS_PERIOD = 5 * 60 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
-const ONE_MINUTE = 60 * 1000;
+const WAIT_FOR_COLLECTIONS = 5 * 1000;
 
 const emptyContract = { removeAllListeners: () => {} };
 
@@ -48,6 +48,16 @@ const minutesAgo = (minutes = 2) =>
 const ALLOWED_MARKETPLACE_IDS =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
+const average = (array) =>
+  array.reduce((total, item) => total + item, 0) / array.length;
+
+const addToQueue = (queue, item, size = 10) => {
+  queue.push(item);
+  if (queue.length > size) {
+    queue.shift();
+  }
+};
+
 /**
  * Create an EventEmitter that listens to transactions on the main
  * NFT marketplaces and emits standardized events.
@@ -56,7 +66,11 @@ const ALLOWED_MARKETPLACE_IDS =
  * @return {EventEmitter}
  */
 export default (ethProvider, collections = []) => {
+  // Last N speeds in requests/ms to fetch LR events, used to calculate
+  // the current speed and rate-limit floors/top offer polling.
+  const eventRequestSpeeds = [0.01];
   let blockCache = {};
+  let polling = false;
   let collectionsToPoll = collections;
   let contracts;
   const polledTimes = collections.reduce((map, collection) => {
@@ -159,12 +173,12 @@ export default (ethProvider, collections = []) => {
     const { address: collection, topics } = transferLog;
     const [, from, to, tokenIdHex] = topics;
     if (tokenIdHex == null) {
-      logMessage(
-        `Null token id from ERC-721 transfer log ${JSON.stringify(
+      logMessage({
+        message: `Null token id from ERC-721 transfer log ${JSON.stringify(
           transferLog
         )}`,
-        "debug"
-      );
+        level: "warning",
+      });
     }
 
     const tokenId = parseInt(Number(tokenIdHex), 10);
@@ -252,11 +266,11 @@ export default (ethProvider, collections = []) => {
       topics.length === 4
     ) {
       const ercLog = await parseERC721Log(transferLog).catch((error) => {
-        logMessage(
-          `Error parsing ERC-721 log ${JSON.stringify(transferLog)}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error parsing ERC-721 log ${JSON.stringify(transferLog)}`,
+          level: "error",
+          error,
+        });
       });
       if (ercLog.to === gemV2Address) {
         const secondTransfer = logs.slice(indexInLogs + 1).find((log) => {
@@ -291,11 +305,11 @@ export default (ethProvider, collections = []) => {
       etherUtils.id("TransferSingle(address,address,address,uint256,uint256)")
     ) {
       return parseERC1155Log(transferLog).catch((error) => {
-        logMessage(
-          `Error parsing ERC-1155 log ${JSON.stringify(transferLog)}`,
-          "error",
-          error
-        );
+        logMessage({
+          message: `Error parsing ERC-1155 log ${JSON.stringify(transferLog)}`,
+          level: "error",
+          error,
+        });
       });
     }
 
@@ -330,15 +344,18 @@ export default (ethProvider, collections = []) => {
     const transactionReceipt = await event
       .getTransactionReceipt()
       .catch((error) => {
-        logMessage(
-          `Error getting tx receipt of event ${JSON.stringify(event)}`,
-          "warning",
-          error
-        );
+        logMessage({
+          message: `Error getting tx receipt of event ${JSON.stringify(event)}`,
+          level: "warning",
+          error,
+        });
         return {};
       });
     if (transactionReceipt == null) {
-      logMessage(`Null tx receipt at ${event.transactionHash}`, "warning");
+      logMessage({
+        message: `Null tx receipt at ${event.transactionHash}`,
+        level: "warning",
+      });
       return {};
     }
 
@@ -364,14 +381,14 @@ export default (ethProvider, collections = []) => {
             indexInLogs
             // eslint-disable-next-line no-loop-func
           ).catch((error) => {
-            logMessage(
-              `Error parsing transfer log ${JSON.stringify({
+            logMessage({
+              message: `Error parsing transfer log ${JSON.stringify({
                 logs,
                 indexInLogs,
               })}`,
-              "warning",
-              error
-            );
+              level: "warning",
+              error,
+            });
             return null;
           });
           if (parsedTransferLog != null) {
@@ -391,14 +408,14 @@ export default (ethProvider, collections = []) => {
             indexInLogs
             // eslint-disable-next-line no-loop-func
           ).catch((error) => {
-            logMessage(
-              `Error parsing transfer log ${JSON.stringify({
+            logMessage({
+              message: `Error parsing transfer log ${JSON.stringify({
                 logs,
                 indexInLogs,
               })}`,
-              "warning",
-              error
-            );
+              level: "warning",
+              error,
+            });
             return null;
           });
           if (parsedTransferLog != null) {
@@ -414,13 +431,17 @@ export default (ethProvider, collections = []) => {
 
       return props;
     } catch (error) {
-      logMessage(`Error getting the token info`, "warning", error);
+      logMessage({
+        message: `Error getting the token info`,
+        level: "warning",
+        error,
+      });
     }
 
-    logMessage(
-      `Unknown token format: ${JSON.stringify(transactionReceipt)}`,
-      "debug"
-    );
+    logMessage({
+      message: `Unknown token format: ${JSON.stringify(transactionReceipt)}`,
+      level: "warning",
+    });
     return props;
   };
 
@@ -434,7 +455,9 @@ export default (ethProvider, collections = []) => {
     const marketplace = "openSea";
     const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.openSea;
     if (address == null) {
-      console.log(`No address set for OpenSea on network ${ETHEREUM_NETWORK}`);
+      logMessage({
+        message: `No address set for OpenSea on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -497,7 +520,9 @@ export default (ethProvider, collections = []) => {
     const { [ETHEREUM_NETWORK]: contractAddress, abi } =
       ethContracts.openSeaSeaport;
     if (contractAddress == null) {
-      console.log(`No address set for OpenSea on network ${ETHEREUM_NETWORK}`);
+      logMessage({
+        message: `No address set for OpenSea on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -575,9 +600,9 @@ export default (ethProvider, collections = []) => {
     const marketplace = "looksRare";
     const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.looksRare;
     if (address == null) {
-      console.log(
-        `No address set for LooksRare on network ${ETHEREUM_NETWORK}`
-      );
+      logMessage({
+        message: `No address set for LooksRare on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -642,7 +667,9 @@ export default (ethProvider, collections = []) => {
     const marketplace = "rarible";
     const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.rarible;
     if (address == null) {
-      console.log(`No address set for Rarible on network ${ETHEREUM_NETWORK}`);
+      logMessage({
+        message: `No address set for Rarible on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -708,9 +735,9 @@ export default (ethProvider, collections = []) => {
     const marketplace = "foundation";
     const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.foundation;
     if (address == null) {
-      console.log(
-        `No address set for Foundation on network ${ETHEREUM_NETWORK}`
-      );
+      logMessage({
+        message: `No address set for Foundation on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -792,7 +819,9 @@ export default (ethProvider, collections = []) => {
     const marketplace = "x2y2";
     const { [ETHEREUM_NETWORK]: address, abi } = ethContracts.x2y2;
     if (address == null) {
-      console.log(`No address set for X2Y2 on network ${ETHEREUM_NETWORK}`);
+      logMessage({
+        message: `No address set for X2Y2 on network ${ETHEREUM_NETWORK}`,
+      });
       return emptyContract;
     }
 
@@ -847,6 +876,19 @@ export default (ethProvider, collections = []) => {
     return contract;
   };
 
+  /*
+   * Calculates how many milliseconds to wait before the next request
+  so the bot can stay under the target rate limit.
+   */
+  const calculateOrderPollDelay = (requestsThisBatch, msElapsed) => {
+    const requestsAtThisSpeed = 1 / average(eventRequestSpeeds);
+    const currentSpeed = (requestsAtThisSpeed + requestsThisBatch) / msElapsed;
+    const targetSpeed = LOOKSRARE_RATE_LIMIT / 60000;
+    const elapsedRatio = currentSpeed / targetSpeed;
+    const targetElapsed = elapsedRatio * msElapsed;
+    return targetElapsed - msElapsed;
+  };
+
   /**
    * Generic poll function for the LR API.
    * @param {Array[String]} collections - The collection addresses
@@ -856,9 +898,10 @@ export default (ethProvider, collections = []) => {
    * returned by the _call_ parameter.
    */
   const pollLRAPI = async (collections, call, handleResponse, queryType) => {
+    const collectionSlice = collections.slice(0, LR_SLICE_SIZE);
     const pollStarted = new Date();
     await Promise.all(
-      collections.slice(0, LR_SLICE_SIZE).map(async (collection) => {
+      collectionSlice.map(async (collection) => {
         const collectionTimes = polledTimes[collection.toLowerCase()] || {};
         const { [queryType]: maxAge = minutesAgo(2) } = collectionTimes;
         const newPollTime = new Date();
@@ -869,20 +912,27 @@ export default (ethProvider, collections = []) => {
             polledTimes[collection] = collectionTimes;
           })
           .catch((error) => {
-            logMessage(`Error polling LR API`, "error", error);
+            logMessage({
+              message: `Error polling LR API`,
+              level: "error",
+              error,
+            });
           });
       })
     );
     const otherCollections = collections.slice(LR_SLICE_SIZE);
     const pollEnded = new Date();
     const msElapsed = pollEnded - pollStarted;
-    console.log(`Polling '${queryType}' took ${msElapsed}`);
+    logMessage({
+      message: `Polling ${LR_SLICE_SIZE} orders of type '${queryType}' took ${msElapsed}`,
+    });
     if (otherCollections.length > 0) {
-      if (ONE_MINUTE > msElapsed) {
-        await sleep(ONE_MINUTE - msElapsed);
+      const delay = calculateOrderPollDelay(collectionSlice.length, msElapsed);
+      if (delay > 0) {
+        await sleep(delay);
       }
 
-      return pollLRAPI(otherCollections, call, handleResponse);
+      return pollLRAPI(otherCollections, call, handleResponse, queryType);
     }
 
     return Promise.resolve();
@@ -938,59 +988,6 @@ export default (ethProvider, collections = []) => {
   };
 
   /**
-   * Retrieves the latest listings for the collections where at least one user owns an NFT.
-   * @param {Array[String]} collections - The collection addresses
-   */
-  const pollLRListings = async (collections) => {
-    const handleResponse = async (collection, listings) => {
-      if (listings.length === 0) {
-        return;
-      }
-
-      listings
-        .sort(({ price: price1 }, { price: price2 }) => price1 - price2)
-        .forEach(async (listing) => {
-          const {
-            price,
-            endTime: endsAt,
-            startTime: startsAt,
-            signer,
-            tokenId,
-          } = listing;
-          const tokenContract = new ethers.Contract(
-            collection,
-            erc721Abi,
-            ethProvider
-          );
-          const metadataUri = await tokenContract
-            .tokenURI(tokenId)
-            .catch(() => {
-              return null;
-            });
-          emit("listing", {
-            ...listing,
-            price: Number(etherUtils.formatEther(price)),
-            seller: signer,
-            startsAt: new Date(startsAt * 1000),
-            endsAt: new Date(endsAt * 1000),
-            marketplace: "looksRare",
-            collection: collection.toLowerCase(),
-            metadataUri,
-            blockchain: "eth",
-            standard: "ERC-721",
-          });
-        });
-    };
-
-    return pollLRAPI(
-      collections,
-      getCollectionListings,
-      handleResponse,
-      "listings"
-    );
-  };
-
-  /**
    * Get a collection's first N offers on LooksRare, sorted by price descending
    * (the highest offer will be the first in the returned array). See
    * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
@@ -1027,49 +1024,126 @@ export default (ethProvider, collections = []) => {
     );
   };
 
-  /**
-   * Poll LooksRare off-chain events (listings and offers). When polling
-   * ends, the object will emit a "pollEnded" event.
-   */
-  eventEmitter.poll = async (collections) => {
-    if (collections != null) {
-      collectionsToPoll = collections;
+  const pollLROrders = async () => {
+    if (collectionsToPoll.length === 0) {
+      await sleep(WAIT_FOR_COLLECTIONS);
+      return pollLROrders();
     }
 
-    if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
-      console.log(`Polling collections ${JSON.stringify(collectionsToPoll)}`);
-      const pollMethods = [
-        pollLRFloors,
-        pollLRListings,
-        pollLRCollectionOffers,
-      ];
-      let index = 0;
-      while (index < pollMethods.length) {
-        const pollStarted = new Date();
-        const method = pollMethods[index];
-        await method(collectionsToPoll);
-        const pollEnded = new Date();
-        const msElapsed = pollEnded - pollStarted;
-        console.log(`Time difference since last poll: ${msElapsed}`);
-        if (msElapsed > 0 && msElapsed < POLL_COLLECTION_SLICE_DELAY) {
-          console.log(
-            `Waiting ${
-              POLL_COLLECTION_SLICE_DELAY - msElapsed
-            } before polling LR again`
-          );
-          await sleep(POLL_COLLECTION_SLICE_DELAY - msElapsed);
+    logMessage({
+      message: `Polling LR Orders from ${collectionsToPoll.length} collections`,
+    });
+    const pollMethods = [pollLRFloors, pollLRCollectionOffers];
+    let index = 0;
+    while (index < pollMethods.length) {
+      const method = pollMethods[index];
+      await method(collectionsToPoll);
+      index += 1;
+    }
+
+    if (polling) {
+      await sleep(POLL_LR_ORDERS_PERIOD);
+      return pollLROrders();
+    }
+
+    return Promise.resolve();
+  };
+
+  const mapLREventType = (eventType) => {
+    switch (eventType) {
+      case "LIST":
+        return "listing";
+      case "OFFER":
+        return "offer";
+      default:
+        return null;
+    }
+  };
+
+  const getLREvents = async (cursorMap) => {
+    const calls = Object.entries(cursorMap).map(([type, cursor]) =>
+      getEvents({ type, cursor }).then((events) => ({ events, type }))
+    );
+    return Promise.all(calls).then(async (eventsByType) => {
+      const newCursorMap = await eventsByType.reduce(
+        async (map, { events, type }) => {
+          if (events.length > 0) {
+            const [oldestEvent] = events.sort(
+              ({ createdAt: createdAt1 }, { createdAt: createdAt2 }) =>
+                new Date(createdAt1) - new Date(createdAt2)
+            );
+            if (new Date(oldestEvent.createdAt) < minutesAgo(20)) {
+              map[type] = null;
+              await sleep(1000);
+            } else {
+              map[type] = Math.min(...events.map(({ id }) => id));
+            }
+          }
+
+          return map;
+        },
+        cursorMap
+      );
+      return {
+        cursorMap: newCursorMap,
+        events: eventsByType.reduce(
+          (all, { events }) => all.concat(events),
+          []
+        ),
+      };
+    });
+  };
+
+  const pollLREvents = async (
+    previousCursorMap = { LIST: null, OFFER: null }
+  ) => {
+    const startTime = new Date();
+    const { cursorMap, events } = await getLREvents(previousCursorMap);
+    events.forEach((event) => {
+      const { type, order, createdAt, token } = event;
+      const {
+        price,
+        endTime: endsAt,
+        signer,
+        collectionAddress: collection,
+      } = order;
+      const eventType = mapLREventType(type);
+      if (eventType != null) {
+        const eventProps = {
+          ...order,
+          price: Number(etherUtils.formatEther(price)),
+          buyer: signer,
+          startsAt: new Date(createdAt),
+          endsAt: new Date(endsAt * 1000),
+          collection: collection.toLowerCase(),
+          marketplace: "looksRare",
+          blockchain: "eth",
+          standard: "ERC-721",
+        };
+        if (token != null) {
+          const { tokenId, tokenURI } = token;
+          eventProps.tokenId = tokenId;
+          eventProps.metadataUri = tokenURI;
         }
 
-        index += 1;
+        emit(eventType, eventProps);
       }
-    } else {
-      await sleep(POLL_COLLECTION_SLICE_DELAY * 3);
+    });
+    if (polling) {
+      const requestsMade = Object.keys(previousCursorMap).length;
+      addToQueue(eventRequestSpeeds, requestsMade / (new Date() - startTime));
+      return pollLREvents(cursorMap);
     }
 
-    eventEmitter.emit("pollEnded");
+    return Promise.resolve();
+  };
+
+  eventEmitter.setCollectionsToPoll = (collections) => {
+    collectionsToPoll = collections;
   };
 
   eventEmitter.start = () => {
+    polling = true;
     contracts = [
       { listener: openSeaEventListener, id: "openSea" },
       { listener: seaportEventListener, id: "openSea" },
@@ -1080,11 +1154,17 @@ export default (ethProvider, collections = []) => {
     ]
       .filter(({ id }) => ALLOWED_MARKETPLACE_IDS.includes(id))
       .map(({ listener }) => listener());
+
+    if (ALLOWED_MARKETPLACE_IDS.includes("looksRare")) {
+      pollLROrders();
+      pollLREvents();
+    }
   };
 
   eventEmitter.stop = () => {
     contracts.forEach((contract) => contract.removeAllListeners());
     eventEmitter.removeAllListeners();
+    polling = false;
   };
 
   return eventEmitter;

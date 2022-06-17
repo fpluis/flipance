@@ -7,6 +7,7 @@ import path from "path";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 import sleep from "../sleep.js";
+import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -47,7 +48,12 @@ const callLRWithRetries = (endpoint = "", retries = 3) => {
       }
 
       if (message === "Too Many Requests" && retries > 0) {
-        await sleep(Math.random() * 30 * 1000);
+        logMessage({
+          message: `LooksRare API rate limits exceeded. Delaying the next request`,
+          response,
+          level: "warning",
+        });
+        await sleep(Math.random() * 5 * 1000);
         return callLRWithRetries(endpoint, retries - 1);
       }
 
@@ -134,4 +140,13 @@ export const getCollectionListings = ({
 
     return listingsBelowMaxAge;
   });
+};
+
+export const getEvents = ({ cursor = null, type = "LIST" }) => {
+  let endpoint = `${looksRareAPI}/api/v1/events?type=${type}&pagination[first]=150`;
+  if (cursor) {
+    endpoint = `${endpoint}&pagination[cursor]=${cursor}`;
+  }
+
+  return callLRWithRetries(endpoint);
 };
