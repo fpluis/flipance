@@ -883,7 +883,7 @@ export default (ethProvider, collections = []) => {
   const calculateOrderPollDelay = (requestsThisBatch, msElapsed) => {
     const requestsAtThisSpeed = 1 / average(eventRequestSpeeds);
     const currentSpeed = (requestsAtThisSpeed + requestsThisBatch) / msElapsed;
-    const targetSpeed = LOOKSRARE_RATE_LIMIT / 60000;
+    const targetSpeed = Number(LOOKSRARE_RATE_LIMIT) / 60000;
     const elapsedRatio = currentSpeed / targetSpeed;
     const targetElapsed = elapsedRatio * msElapsed;
     return targetElapsed - msElapsed;
