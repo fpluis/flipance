@@ -93,11 +93,19 @@ const describeOffer = ({
 }) => {
   let description;
   if (target === "user") {
-    const firstSentence =
-      collectionMetadata.name && collectionMetadata.name.length > 0
-        ? `You received a collection offer of ${priceDescription} on all your ${collectionMetadata.name} NFTs (you have ${tokenIds.length}) at LooksRare!`
-        : `You received a collection offer of ${priceDescription} on ${tokenIds.length} of your items at LooksRare!`;
-    description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    if (tokenId == null) {
+      const firstSentence =
+        collectionMetadata.name && collectionMetadata.name.length > 0
+          ? `You received a collection offer of ${priceDescription} on all your ${collectionMetadata.name} NFTs (you have ${tokenIds.length}) at LooksRare!`
+          : `You received a collection offer of ${priceDescription} on ${tokenIds.length} of your items at LooksRare!`;
+      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    } else {
+      const firstSentence =
+        collectionMetadata.name && collectionMetadata.name.length > 0
+          ? `You received a collection offer of ${priceDescription} on your ${collectionMetadata.name} #${tokenId} at LooksRare!`
+          : `You received a collection offer of ${priceDescription} on one of your NFTs at LooksRare!`;
+      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    }
   } else {
     const firstSentence =
       collectionMetadata.name && collectionMetadata.name.length > 0
