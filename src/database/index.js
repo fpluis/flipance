@@ -1780,7 +1780,7 @@ export const createDbClient = async ({
         value:
           price === 0 || collectionFloor === 0 || floorDifference == null
             ? null
-            : floorDifference,
+            : Math.min(floorDifference, 10 ** 7),
         name: "floor_difference",
       },
       { value: price, name: "price" },
