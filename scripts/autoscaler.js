@@ -57,7 +57,11 @@ const periodicAutoscale = async (args) => {
       })
     )
   ).catch((error) => {
-    console.log(`Error updating DB state with new sharding info`, error);
+    logMessage({
+      message: `Error updating DB state with new sharding info`,
+      level: "warning",
+      error,
+    });
     return [];
   });
   await sleep(POLLING_PERIOD);
@@ -111,15 +115,15 @@ const pollDiscordShards = async (args) => {
       .replaceNamespacedDeployment(deploymentName, namespace, deployment)
       .then(() => "success")
       .catch((error) => {
-        logMessage(
-          `Error editing the namespaced deployment with args ${JSON.stringify(
+        logMessage({
+          message: `Error editing the namespaced deployment with args ${JSON.stringify(
             deploymentName,
             namespace,
             deployment
           )}:`,
-          "error",
-          error
-        );
+          level: "error",
+          error,
+        });
         return "error";
       });
     if (result !== "success") {

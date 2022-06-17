@@ -19,10 +19,10 @@ export default async (metadataURI = "", tokenId = "") => {
         return parsed;
       }
     } catch (error) {
-      logMessage(
-        `Error parsing binary as JSON: ${JSON.stringify(error)}`,
-        "warning"
-      );
+      logMessage({
+        message: `Error parsing binary as JSON: ${JSON.stringify(error)}`,
+        level: "warning",
+      });
       return {};
     }
   }

@@ -180,11 +180,11 @@ export default async () => {
           return getAlchemyNFTs(address);
         });
     } catch (error) {
-      logMessage(
-        `Error fetching NFTs for address ${address}`,
-        "warning",
-        error
-      );
+      logMessage({
+        mesage: `Error fetching NFTs for address ${address}`,
+        level: "warning",
+        error,
+      });
       return [];
     }
   };

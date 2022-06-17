@@ -412,11 +412,11 @@ export default async (args) => {
       : originalTokenId;
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
-        logMessage(
-          `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}.`,
-          "warning",
-          error
-        );
+        logMessage({
+          message: `Error fetching metadata from uri ${metadataUri}; tx hash ${transactionHash}.`,
+          level: "warning",
+          error,
+        });
         return {};
       })
     : Promise.resolve({}));
@@ -558,12 +558,12 @@ export default async (args) => {
           .png()
           .toBuffer()
           .catch((error) => {
-            logMessage(
-              `Error generating preview image with sharp: ${JSON.stringify(
+            logMessage({
+              message: `Error generating preview image with sharp: ${JSON.stringify(
                 error
               )}`,
-              "warning"
-            );
+              level: "warning",
+            });
             return { embeds: [], files };
           });
         filename = filename.replace(/svg$/, "png");

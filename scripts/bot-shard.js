@@ -96,11 +96,11 @@ const pollNFTEvents = async ({
             startsAt1 - startsAt2
         )
       : [{ startsAt: new Date() }];
-  logMessage(
-    `Received ${nftEvents.length} events (I handle ${
+  logMessage({
+    message: `Received ${nftEvents.length} events (I handle ${
       myEvents.length
-    }) since date ${lastPollTime.toISOString()}, id ${minId}. New poll time ${newPollTime.toISOString()}, last polled id ${lastPolledId}`
-  );
+    }) since date ${lastPollTime.toISOString()}.`,
+  });
   botClient.setMaxEventAge(lastPollTime);
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
