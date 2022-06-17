@@ -11,6 +11,7 @@ import { SlashCommandBuilder } from "@discordjs/builders";
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v9";
 import minimist from "minimist";
+import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -172,9 +173,15 @@ export default async (guildId) => {
       body: commands,
     })
     .then(() =>
-      console.log(`Successfully registered application commands on ${guildId}.`)
+      logMessage({
+        message: `Successfully registered application commands on ${guildId}.`,
+      })
     )
     .catch((error) =>
-      console.log(`Error registering commands on guild ${guildId}:`, error)
+      logMessage({
+        message: `Error registering commands on guild ${guildId}:`,
+        level: "error",
+        error,
+      })
     );
 };

@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
 import registerCommands from "../src/discord/register-commands.js";
 import minimist from "minimist";
+import logMessage from "../src/log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -29,5 +30,8 @@ discordClient.on("ready", async () => {
   }
 
   discordClient.destroy();
-  console.log(`Done`);
+  logMessage({
+    message: `Registered commands on ${guildIds.length} servers`,
+    level: "info",
+  });
 });

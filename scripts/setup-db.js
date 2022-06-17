@@ -7,17 +7,18 @@
 import path from "path";
 import dotenv from "dotenv";
 import { createDb, setUpDb, isDbCreated } from "../src/database/index.js";
+import logMessage from "../src/log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
 const setUp = async () => {
   const dbExists = await isDbCreated();
   if (!dbExists) {
-    console.log(`DB doesn't exist, creating it`);
+    logMessage({ message: `DB doesn't exist, creating it`, level: "info" });
     await createDb();
   }
 
-  console.log(`Setting up the DB`);
+  logMessage({ message: `Setting up the DB`, level: "info" });
   return setUpDb();
 };
 

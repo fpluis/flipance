@@ -19,7 +19,10 @@ const { TOTAL_SHARDS, SHARD_ID, HOSTNAME } = process.env;
 const [shardIdFromString] = SHARD_ID.match(/\d$/) || [];
 let shardId = shardIdFromString ? Number(shardIdFromString) : null;
 let totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : null;
-console.log(`Shard configuration: ${shardId + 1}/${totalShards}`);
+logMessage({
+  message: `Shard configuration: ${shardId + 1}/${totalShards}`,
+  level: "info",
+});
 
 // Milliseconds spent waiting between each poll for NFT events from the DB.
 // Should at least match and exceed Ethereum's block time.
@@ -27,7 +30,7 @@ const DELAY_BETWEEN_POLLS = 20 * 1000;
 
 // After how many polls the Discord client should reset.
 // This is a preventive measure against silent disconnects.
-const POLLS_BETWEEN_RESETS = 100;
+const POLLS_BETWEEN_RESETS = 1000;
 
 const POLL_SHARDING_INFO_DELAY = 30 * 1000;
 
@@ -93,7 +96,7 @@ const pollNFTEvents = async ({
             startsAt1 - startsAt2
         )
       : [{ startsAt: new Date() }];
-  console.log(
+  logMessage(
     `Received ${nftEvents.length} events (I handle ${
       myEvents.length
     }) since date ${lastPollTime.toISOString()}, id ${minId}. New poll time ${newPollTime.toISOString()}, last polled id ${lastPolledId}`
@@ -185,13 +188,11 @@ const start = async () => {
 start();
 
 process.on("unhandledRejection", (error) => {
-  console.log(error);
-  logMessage(`Unhandled promise rejection`, "error", error);
+  logMessage({ message: `Unhandled promise rejection`, level: "error", error });
   process.exit(-1);
 });
 
 process.on("uncaughtException", (error) => {
-  console.log(error);
-  logMessage(`Uncaught exception`, "error", error);
+  logMessage({ message: `Uncaught exception`, level: "error", error });
   process.exit(-1);
 });

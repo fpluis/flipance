@@ -245,7 +245,6 @@ const handleServerAlert = async ({ dbClient, interaction }) => {
       });
     case "error":
     case "missing-user":
-      console.log(`Error creating the server alert: ${result}`);
       return interaction.editReply({
         content: `There was an error processing your request. Please try again later.`,
         ephemeral: true,
@@ -1040,7 +1039,11 @@ export default async (clients, interaction) => {
     try {
       return await handleCommand(args);
     } catch (error) {
-      logMessage(`Error handling user command`, "error", error);
+      logMessage({
+        message: `Error handling user command`,
+        level: "error",
+        error,
+      });
       return Promise.resolve();
     }
   }
@@ -1049,7 +1052,11 @@ export default async (clients, interaction) => {
     try {
       return await handleSelectMenu(args);
     } catch (error) {
-      logMessage(`Error handling select menu`, "error", error);
+      logMessage({
+        message: `Error handling select menu`,
+        level: "error",
+        error,
+      });
       return Promise.resolve();
     }
   }

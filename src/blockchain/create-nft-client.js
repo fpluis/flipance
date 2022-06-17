@@ -43,7 +43,10 @@ const getNFTScanToken = async () => {
     .then((res) => res.json())
     .then(async (response) => {
       if (response == null || response.data == null) {
-        logMessage(`Empty NFTScan getToken response: ${response}`, "warning");
+        logMessage({
+          message: `Empty NFTScan getToken response: ${response}`,
+          level: "warning",
+        });
         return null;
       }
 
@@ -57,7 +60,11 @@ const getNFTScanToken = async () => {
       return accessToken;
     })
     .catch((error) => {
-      logMessage(`Error fetching NFTScan access token`, "warning", error);
+      logMessage({
+        message: `Error fetching NFTScan access token`,
+        level: "warning",
+        error,
+      });
       return null;
     });
 };
@@ -85,7 +92,10 @@ const getNFTScanNFTs = async (address) => {
     .then((res) => res.json())
     .then((response) => {
       if (response == null || response.data == null) {
-        logMessage(`Empty NFTScan getNFTs response: ${response}`, "warning");
+        logMessage({
+          message: `Empty NFTScan getNFTs response: ${response}`,
+          level: "warning",
+        });
         return [];
       }
 
@@ -98,7 +108,11 @@ const getNFTScanNFTs = async (address) => {
       );
     })
     .catch((error) => {
-      logMessage(`Error fetching NFTs from NFTScan`, "warning", error);
+      logMessage({
+        message: `Error fetching NFTs from NFTScan`,
+        level: "warning",
+        error,
+      });
       return [];
     });
 };
@@ -112,7 +126,10 @@ export default async () => {
       masterKey: MORALIS_MASTER_KEY,
     })
     .catch(() => {
-      console.log(`Invalid/missing Moralis credentials. Starting without it`);
+      logMessage({
+        message: `Invalid/missing Moralis credentials. Starting without it`,
+        level: "info",
+      });
       usingMoralis = false;
     });
 

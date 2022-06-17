@@ -45,7 +45,10 @@ export default async (metadataURI = "", tokenId = "") => {
         metadata = await response.json();
       } catch (error) {
         const text = await response.text();
-        logMessage(`Plain-text metadata URL is not JSON: ${text}`, "warning");
+        logMessage({
+          message: `Plain-text metadata URL is not JSON: ${text}`,
+          level: "warning",
+        });
       }
 
       return metadata;
