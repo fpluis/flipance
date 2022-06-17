@@ -15,6 +15,6 @@ COPY . .
 
 CMD node scripts/setup-db.js && \
   node scripts/register-commands.js && \
-  node scripts/polling-node.js
+  node scripts/polling-node.js --max-old-space-size=4096
 
 # CMD node scripts/polling-node.js
