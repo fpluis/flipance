@@ -924,7 +924,7 @@ export default (ethProvider, collections = []) => {
     const pollEnded = new Date();
     const msElapsed = pollEnded - pollStarted;
     logMessage({
-      message: `Polling ${LR_SLICE_SIZE} orders of type '${queryType}' took ${msElapsed}`,
+      message: `Polling ${LR_SLICE_SIZE} ${queryType} took ${msElapsed}ms`,
     });
     if (otherCollections.length > 0) {
       const delay = calculateOrderPollDelay(collectionSlice.length, msElapsed);
