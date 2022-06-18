@@ -163,6 +163,10 @@ export default async () => {
    */
   const getAddressNFTs = (address = "") => {
     try {
+      if (ETHEREUM_NETWORK === "rinkeby") {
+        return getAlchemyNFTs(address);
+      }
+
       return moralisClient.Web3API.account
         .getNFTs({
           address,
