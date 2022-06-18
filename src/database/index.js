@@ -768,7 +768,6 @@ const toNFTEventObject = (nftEvent) => {
     floorDifference: Number(floorDifference),
     collectionFloor,
     tokenId,
-    compositeIdentifier,
     metadataUri,
   };
 };
