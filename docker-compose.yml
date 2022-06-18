@@ -39,19 +39,6 @@ services:
       - dbnet
     restart: on-failure
 
-  autoscaler:
-    image: fpluis/flipance-autoscaler
-    build:
-      context: ./
-      dockerfile: ./services/autoscaler/Dockerfile
-    environment:
-      DB_HOSTNAME: "postgres"
-    # It's crucial that the postgres image starts first to prepare the DB
-    depends_on:
-      - postgres
-    networks:
-      - dbnet
-
 networks:
   dbnet:
     name: flipance-database-network
