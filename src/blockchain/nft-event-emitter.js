@@ -16,12 +16,7 @@ import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const {
-  MARKETPLACES,
-  ETHEREUM_NETWORK = "homestead",
-  // The default rate limit without an API key
-  LOOKSRARE_RATE_LIMIT = 120,
-} = process.env;
+const { MARKETPLACES, ETHEREUM_NETWORK = "homestead" } = process.env;
 
 const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
@@ -39,24 +34,12 @@ const LR_SLICE_SIZE = 40;
 const POLL_LR_ORDERS_PERIOD = 5 * 60 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 const WAIT_FOR_COLLECTIONS = 5 * 1000;
+const LOOKSRARE_CACHE_DURATION = 10000;
 
 const emptyContract = { removeAllListeners: () => {} };
 
-const minutesAgo = (minutes = 2) =>
-  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
-
 const ALLOWED_MARKETPLACE_IDS =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
-
-const average = (array) =>
-  array.reduce((total, item) => total + item, 0) / array.length;
-
-const addToQueue = (queue, item, size = 10) => {
-  queue.push(item);
-  if (queue.length > size) {
-    queue.shift();
-  }
-};
 
 /**
  * Create an EventEmitter that listens to transactions on the main
@@ -68,7 +51,7 @@ const addToQueue = (queue, item, size = 10) => {
 export default (ethProvider, collections = []) => {
   // Last N speeds in requests/ms to fetch LR events, used to calculate
   // the current speed and rate-limit floors/top offer polling.
-  const eventRequestSpeeds = [0.01];
+  // const eventRequestSpeeds = [0.01];
   let blockCache = {};
   let polling = false;
   let collectionsToPoll = collections;
@@ -868,19 +851,6 @@ export default (ethProvider, collections = []) => {
     return contract;
   };
 
-  /*
-   * Calculates how many milliseconds to wait before the next request
-  so the bot can stay under the target rate limit.
-   */
-  const calculateOrderPollDelay = (requestsThisBatch, msElapsed) => {
-    const requestsAtThisSpeed = 1 / average(eventRequestSpeeds);
-    const currentSpeed = (requestsAtThisSpeed + requestsThisBatch) / msElapsed;
-    const targetSpeed = Number(LOOKSRARE_RATE_LIMIT) / 60000;
-    const elapsedRatio = currentSpeed / targetSpeed;
-    const targetElapsed = elapsedRatio * msElapsed;
-    return targetElapsed - msElapsed;
-  };
-
   /**
    * Generic poll function for the LR API.
    * @param {Array[String]} collections - The collection addresses
@@ -912,7 +882,8 @@ export default (ethProvider, collections = []) => {
       message: `Polling ${LR_SLICE_SIZE} ${queryType} took ${msElapsed}ms`,
     });
     if (otherCollections.length > 0) {
-      const delay = calculateOrderPollDelay(collectionSlice.length, msElapsed);
+      // const delay = calculateOrderPollDelay(collectionSlice.length, msElapsed);
+      const delay = 1000;
       if (delay > 0) {
         await sleep(delay);
       }
@@ -1045,86 +1016,62 @@ export default (ethProvider, collections = []) => {
     }
   };
 
-  const getLREvents = async (cursorMap) => {
-    const calls = Object.entries(cursorMap).map(([type, cursor]) =>
-      getEvents({ type, cursor }).then((events) => ({ events, type }))
-    );
-    return Promise.all(calls).then(async (eventsByType) => {
-      const newCursorMap = await eventsByType.reduce(
-        async (map, { events, type }) => {
-          if (events.length > 0) {
-            const [oldestEvent] = events.sort(
-              ({ createdAt: createdAt1 }, { createdAt: createdAt2 }) =>
-                new Date(createdAt1) - new Date(createdAt2)
-            );
-            if (new Date(oldestEvent.createdAt) < minutesAgo(20)) {
-              map[type] = null;
-              await sleep(1000);
-            } else {
-              map[type] = Math.min(...events.map(({ id }) => id));
-            }
-          }
+  const handleLREvent = (event) => {
+    const { type, order, createdAt, token } = event;
+    const { price, endTime, signer, collectionAddress: collection } = order;
+    const endsAt = new Date(endTime * 1000);
+    if (endsAt < new Date()) {
+      return;
+    }
 
-          return map;
-        },
-        cursorMap
-      );
-      return {
-        cursorMap: newCursorMap,
-        events: eventsByType.reduce(
-          (all, { events }) => all.concat(events),
-          []
-        ),
+    const eventType = mapLREventType(type);
+    if (eventType != null) {
+      const eventProps = {
+        ...order,
+        price: Number(etherUtils.formatEther(price)),
+        startsAt: new Date(createdAt),
+        endsAt,
+        collection: collection.toLowerCase(),
+        marketplace: "looksRare",
+        blockchain: "eth",
+        standard: "ERC-721",
       };
-    });
+      if (signer && eventType === "listing") {
+        eventProps.seller = signer;
+      }
+
+      if (signer && eventType === "offer") {
+        eventProps.buyer = signer;
+      }
+
+      if (token != null) {
+        const { tokenId, tokenURI } = token;
+        eventProps.tokenId = tokenId;
+        eventProps.metadataUri = tokenURI;
+      }
+
+      emit(eventType, eventProps);
+    }
   };
 
-  const pollLREvents = async (
-    previousCursorMap = { LIST: null, OFFER: null }
-  ) => {
-    const startTime = new Date();
-    const { cursorMap, events } = await getLREvents(previousCursorMap);
-    events.forEach((event) => {
-      const { type, order, createdAt, token } = event;
-      const { price, endTime, signer, collectionAddress: collection } = order;
-      const endsAt = new Date(endTime * 1000);
-      if (endsAt < new Date()) {
-        return;
-      }
-
-      const eventType = mapLREventType(type);
-      if (eventType != null) {
-        const eventProps = {
-          ...order,
-          price: Number(etherUtils.formatEther(price)),
-          startsAt: new Date(createdAt),
-          endsAt,
-          collection: collection.toLowerCase(),
-          marketplace: "looksRare",
-          blockchain: "eth",
-          standard: "ERC-721",
-        };
-        if (signer && eventType === "listing") {
-          eventProps.seller = signer;
-        }
-
-        if (signer && eventType === "offer") {
-          eventProps.buyer = signer;
-        }
-
-        if (token != null) {
-          const { tokenId, tokenURI } = token;
-          eventProps.tokenId = tokenId;
-          eventProps.metadataUri = tokenURI;
-        }
-
-        emit(eventType, eventProps);
-      }
+  const pollLREvents = async (lastEventIds = []) => {
+    const pollStarted = new Date();
+    const events = await Promise.all([
+      getEvents({ type: "LIST" }),
+      getEvents({ type: "OFFER" }),
+    ]).then(([lists, offers]) => lists.concat(offers));
+    const newUniqueEvents = events.filter(
+      ({ id }) => !lastEventIds.includes(id)
+    );
+    newUniqueEvents.forEach((event) => {
+      handleLREvent(event);
     });
+    logMessage({ message: `New LR events`, count: newUniqueEvents.length });
     if (polling) {
-      const requestsMade = Object.keys(previousCursorMap).length;
-      addToQueue(eventRequestSpeeds, requestsMade / (new Date() - startTime));
-      return pollLREvents(cursorMap);
+      const msElapsed = new Date() - pollStarted;
+      await sleep(LOOKSRARE_CACHE_DURATION - msElapsed);
+      const lastEventIds = events.map(({ id }) => id);
+      return pollLREvents(lastEventIds);
     }
 
     return Promise.resolve();
