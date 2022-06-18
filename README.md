@@ -239,8 +239,8 @@ Necessary environment variables:
 Apart from the necessary configuration variables, there are some global settings you can modify as environment variables either in a .env file or the terraform variables:
 - **MAX_NICKNAME_LENGTH**: Max. length in characters that alert nicknames can have.
 - **MAX_OFFER_FLOOR_DIFFERENCE**: Default max. difference as a percentage between the floor and the offer for all alerts.
-- **DEFAULT_USER_ALERT_LIMIT**: Default max number of alerts a user can have.
-- **DEFAULT_SERVER_ALERT_LIMIT**: Default max number of alerts a server can have.
+- **DEFAULT_USER_ALERT_LIMIT**: Default max number of personal alerts (any combination of wallet and collection alerts) that a user can have.
+- **DEFAULT_SERVER_ALERT_LIMIT**: Default max number of server alerts a server can have.
 - **MARKETPLACES**: Comma-separated list of marketplaces you want the bot to poll for events. Default (all marketplaces): looksRare,openSea,x2y2,foundation,rarible.
 - **ETHEREUM_NETWORK**: The ethereum network the bot will connect to. Currently supported values are _homestead_ (the default) and _rinkeby_. Only LooksRare trades are tracked on the Rinkeby testnet.
 
