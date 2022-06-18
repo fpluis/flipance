@@ -210,7 +210,7 @@ const monitorBlockchainEvents = async ({
   };
 
   const handleNFTEvent = async (event) => {
-    const { eventType, collection, price, hash: orderHash } = event;
+    const { eventType, collection, price } = event;
     if (eventType === "cancelOrder") {
       return dbClient.addNFTEvent(event);
     }
@@ -230,7 +230,6 @@ const monitorBlockchainEvents = async ({
 
     return dbClient.addNFTEvent({
       ...event,
-      orderHash,
       collectionFloor,
       floorDifference: computeFloorDifference(price, collectionFloor),
     });
