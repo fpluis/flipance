@@ -1101,25 +1101,32 @@ export default (ethProvider, collections = []) => {
     const { cursorMap, events } = await getLREvents(previousCursorMap);
     events.forEach((event) => {
       const { type, order, createdAt, token } = event;
-      const {
-        price,
-        endTime: endsAt,
-        signer,
-        collectionAddress: collection,
-      } = order;
+      const { price, endTime, signer, collectionAddress: collection } = order;
+      const endsAt = new Date(endTime * 1000);
+      if (endsAt < new Date()) {
+        return;
+      }
+
       const eventType = mapLREventType(type);
       if (eventType != null) {
         const eventProps = {
           ...order,
           price: Number(etherUtils.formatEther(price)),
-          buyer: signer,
           startsAt: new Date(createdAt),
-          endsAt: new Date(endsAt * 1000),
+          endsAt,
           collection: collection.toLowerCase(),
           marketplace: "looksRare",
           blockchain: "eth",
           standard: "ERC-721",
         };
+        if (signer && eventType === "listing") {
+          eventProps.seller = signer;
+        }
+
+        if (signer && eventType === "offer") {
+          eventProps.buyer = signer;
+        }
+
         if (token != null) {
           const { tokenId, tokenURI } = token;
           eventProps.tokenId = tokenId;
