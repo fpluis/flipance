@@ -73,14 +73,6 @@ export default (ethProvider, collections = []) => {
   let polling = false;
   let collectionsToPoll = collections;
   let contracts;
-  const polledTimes = collections.reduce((map, collection) => {
-    map[collection.toLowerCase()] = {
-      listings: minutesAgo(2),
-      offers: minutesAgo(2),
-    };
-
-    return map;
-  }, {});
   const eventEmitter = new EventEmitter();
 
   /*
@@ -902,15 +894,8 @@ export default (ethProvider, collections = []) => {
     const pollStarted = new Date();
     await Promise.all(
       collectionSlice.map(async (collection) => {
-        const collectionTimes = polledTimes[collection.toLowerCase()] || {};
-        const { [queryType]: maxAge = minutesAgo(2) } = collectionTimes;
-        const newPollTime = new Date();
-        return call({ collection, maxAge })
-          .then((response) => {
-            handleResponse(collection, response, maxAge);
-            collectionTimes[queryType] = newPollTime;
-            polledTimes[collection] = collectionTimes;
-          })
+        return call({ collection })
+          .then((response) => handleResponse(collection, response))
           .catch((error) => {
             logMessage({
               message: `Error polling LR API`,

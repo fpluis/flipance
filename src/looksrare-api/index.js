@@ -23,9 +23,6 @@ const looksRareAPI =
     ? `https://api.looksrare.org`
     : `https://api-rinkeby.looksrare.org`;
 
-const minutesAgo = (minutes = 2) =>
-  new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
-
 /**
  * Calls a LooksRare endpoint with a limited number of retries.
  * @param  {String} endpoint - The endpoint to call.
@@ -98,49 +95,6 @@ export const getCollectionFloor = ({ collection, first = 1 }) =>
   callLRWithRetries(
     `${looksRareAPI}/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=PRICE_ASC`
   );
-
-/**
- * Get a collection's latest listings on LooksRare. See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
- * @param {Object} params - The parameters object
- * @param {String} params.collection - The collection's address.
- * @param {Date} params.maxAge - The max age an listing can have.
- * @param {String} params.cursor - The hash of the oldest order, used to navigate the paginated response.
- * @return {Array[LooksRareOrder]}
- */
-export const getCollectionListings = ({
-  collection,
-  maxAge = minutesAgo(2),
-  first = 150,
-  cursor = null,
-}) => {
-  let endpoint = `${looksRareAPI}/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=NEWEST`;
-  if (cursor) {
-    endpoint = `${endpoint}&pagination[cursor]=${cursor}`;
-  }
-
-  return callLRWithRetries(endpoint).then(async (listings) => {
-    const listingsBelowMaxAge = listings.filter(
-      ({ startTime }) => new Date(startTime * 1000).getTime() > maxAge
-    );
-    if (listingsBelowMaxAge.length > 0) {
-      const listingsByEarliestDate = listingsBelowMaxAge.sort(
-        ({ startTime: startTime1 }, { startTime: startTime2 }) =>
-          startTime2 - startTime1
-      );
-      const oldestListing =
-        listingsByEarliestDate[listingsByEarliestDate.length - 1];
-      const otherListings = await getCollectionListings({
-        collection,
-        maxAge,
-        first,
-        cursor: oldestListing.hash,
-      });
-      return listingsByEarliestDate.concat(otherListings);
-    }
-
-    return listingsBelowMaxAge;
-  });
-};
 
 export const getEvents = ({ cursor = null, type = "LIST" }) => {
   let endpoint = `${looksRareAPI}/api/v1/events?type=${type}&pagination[first]=150`;

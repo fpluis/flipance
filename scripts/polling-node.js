@@ -235,13 +235,13 @@ const monitorBlockchainEvents = async ({
     });
   };
 
-  const pollAlertTokens = async (nftEventEmitter) => {
+  const pollAlertTokens = async () => {
     const { objects: alerts } = await dbClient.getAllAlerts();
     const collections = alertsToCollections(alerts);
     nftEventEmitter.setCollectionsToPoll(collections);
     await updateAlertTokens(alerts);
     await sleep(UPDATE_ALERT_TOKENS_DELAY);
-    return pollAlertTokens(nftEventEmitter);
+    return pollAlertTokens();
   };
 
   nftEventEmitter.start();
