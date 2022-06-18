@@ -80,6 +80,17 @@ const isAllowedByPreferences = ({
     (["wallet", "collection"].includes(alertType) &&
       ![buyer, seller].includes(watcherAddress))
   ) {
+    logMessage({
+      message: "Filtered event",
+      createdTooLongAgo: createdAt < maxEventAge,
+      startedTooLongAgo:
+        minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE,
+      notAllowedMarket: !allowedMarketplaces.includes(marketplace),
+      notAllowedEvent: !allowedEvents.includes(eventType),
+      notForMe:
+        ["wallet", "collection"].includes(alertType) &&
+        ![buyer, seller].includes(watcherAddress),
+    });
     return false;
   }
 
@@ -133,6 +144,7 @@ export default ({ dbClient, shardId, totalShards }) => {
         return Promise.resolve();
       }
 
+      logMessage({ message: `NFT event`, event, watchers });
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
