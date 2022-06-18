@@ -145,9 +145,9 @@ const describeAcceptOffer = (args) => {
     priceDescription,
   } = args;
   const description = isBuyer
-    ? `You accepted an offer on ${marketplace} for ${priceDescription}.`
-    : isSeller
     ? `Your offer was accepted on ${marketplace} for ${priceDescription}.`
+    : isSeller
+    ? `You accepted an offer on ${marketplace} for ${priceDescription}.`
     : `Offer accepted on ${marketplace} for ${priceDescription}.`;
   return {
     title: "New Sale!",
@@ -377,8 +377,6 @@ const describeEvent = (args) => {
  * from the collection's contract.
  * @param {Number} endsAt - The timestamp (seconds since Epoch) when the
  * event ends. Relevant for offers, auctions and listings.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {Number} price - The price in Ether.
  * @param {Number} collectionFloor - The collection's floor in Ether.
  * @param {String} tokenId - The token's id.
@@ -388,7 +386,6 @@ const describeEvent = (args) => {
  * from the collection's metadata.
  * @param {String} collectionMetadata - The collection's metadata.
  * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceString - The price description in Ether.
  * @typedef {Object} EmbedDescription
  * @property {String} title - The embed's title (link at the top of the embed).
  * @property {String} url - The title's url.
@@ -407,9 +404,9 @@ export default async (args) => {
     metadataUri,
     tokenId,
     endsAt,
-    nickname,
+    watcher,
   } = args;
-
+  const { nickname, address: alertAddress } = watcher || {};
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
         logMessage({
@@ -428,6 +425,8 @@ export default async (args) => {
     color: 0x0099ff,
     ...describeEvent({
       ...args,
+      isBuyer: alertAddress === buyerAddress,
+      isSeller: alertAddress === sellerAddress,
       collectionMetadata,
       marketplace,
       marketplaceId,

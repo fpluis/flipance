@@ -136,11 +136,11 @@ export default ({ dbClient, shardId, totalShards }) => {
       }
 
       watchers.forEach(async (watcher) => {
-        const { discordId, type: alertType, channelId, nickname } = watcher;
+        const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
           const embed = await buildEmbed({
             ...event,
-            nickname,
+            watcher,
             target: alertType === "server" ? "server" : "user",
           }).catch((error) => {
             logMessage({
