@@ -48,18 +48,22 @@ const generateTokenMarketplaceURL = (marketplace, collection, tokenId) => {
 
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
+const roundDecimals = (number, decimals = 6) =>
+  Math.round((Number(number) + Number.EPSILON) * 10 ** decimals) /
+  10 ** decimals;
+
 const describePrice = ({ price, floorDifference, collectionFloor }) => {
-  const priceString = `${Number(price).toFixed(3)} ETH`;
+  const priceString = `${roundDecimals(price)} ETH`;
   return collectionFloor == null
     ? `${priceString}`
     : floorDifference === 0
-    ? `${priceString}, at the collection's floor price.`
+    ? `${priceString}, at the collection's floor price`
     : floorDifference < 0
-    ? `${priceString}, ${Number(
-        (Math.abs(floorDifference) * 100).toFixed(4)
+    ? `${priceString}, ${roundDecimals(
+        Math.abs(floorDifference) * 100
       )}% below the floor price (${collectionFloor} ETH)`
-    : `${priceString}, ${Number(
-        (floorDifference * 100).toFixed(4)
+    : `${priceString}, ${roundDecimals(
+        floorDifference * 100
       )}% above the floor price (${collectionFloor} ETH)`;
 };
 
@@ -68,8 +72,6 @@ const describePrice = ({ price, floorDifference, collectionFloor }) => {
  * @param {Number} price - The price in Ether.
  * @param {Number} collectionFloor - The collection's floor in Ether.
  * @param {String} tokenId - The token's id.
- * @param {String} tokenIds - The token ids that the wallet receiving this
- * notification currently owns.
  * @param {"user"|"server"} target - Whether the Discord user receiving
  * the notification is a user or a server.
  * @param {String} collectionUrl - The URL for the collection, retrieved
@@ -85,7 +87,6 @@ const describePrice = ({ price, floorDifference, collectionFloor }) => {
  */
 const describeOffer = ({
   tokenId,
-  tokenIds = [],
   target,
   collectionUrl,
   collectionMetadata,
@@ -96,8 +97,8 @@ const describeOffer = ({
     if (tokenId == null) {
       const firstSentence =
         collectionMetadata.name && collectionMetadata.name.length > 0
-          ? `You received a collection offer of ${priceDescription} on all your ${collectionMetadata.name} NFTs (you have ${tokenIds.length}) at LooksRare!`
-          : `You received a collection offer of ${priceDescription} on ${tokenIds.length} of your items at LooksRare!`;
+          ? `All your ${collectionMetadata.name} NFTs received a collection offer of ${priceDescription} at LooksRare!`
+          : `Some of your NFTs received a collection offer of ${priceDescription} at LooksRare!`;
       description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
     } else {
       const firstSentence =
@@ -110,7 +111,7 @@ const describeOffer = ({
     const firstSentence =
       collectionMetadata.name && collectionMetadata.name.length > 0
         ? `Someone made a collection offer of ${priceDescription} on all ${collectionMetadata.name} NFTs at LooksRare!`
-        : `Someone made a collection offer of ${priceDescription} on all NFTs at LooksRare!`;
+        : `Someone made a collection offer of ${priceDescription} at LooksRare!`;
     description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
   }
 
@@ -144,10 +145,10 @@ const describeAcceptOffer = (args) => {
     priceDescription,
   } = args;
   const description = isBuyer
-    ? `You accepted an offer on ${marketplace} for ${priceDescription}`
+    ? `You accepted an offer on ${marketplace} for ${priceDescription}.`
     : isSeller
-    ? `Your offer was accepted on ${marketplace} for ${priceDescription}`
-    : `Offer accepted on ${marketplace} for ${priceDescription}`;
+    ? `Your offer was accepted on ${marketplace} for ${priceDescription}.`
+    : `Offer accepted on ${marketplace} for ${priceDescription}.`;
   return {
     title: "New Sale!",
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
@@ -217,8 +218,8 @@ const describeCreateAuction = (args) => {
     priceDescription,
   } = args;
   const description = isSeller
-    ? `You created an auction on ${marketplace} with reserve price ${priceDescription}`
-    : `Auction created on ${marketplace} with reserve price ${priceDescription}`;
+    ? `You created an auction on ${marketplace} with reserve price ${priceDescription}.`
+    : `Auction created on ${marketplace} with reserve price ${priceDescription}.`;
   return {
     title: "New Sale!",
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
@@ -249,10 +250,10 @@ const describeSettleAuction = (args) => {
     priceDescription,
   } = args;
   const description = isBuyer
-    ? `You won an auction on ${marketplace} for ${priceDescription}`
+    ? `You won an auction on ${marketplace} for ${priceDescription}.`
     : isSeller
-    ? `You sold an item in auction on ${marketplace} for ${priceDescription}`
-    : `Auction won on ${marketplace} for ${priceDescription}`;
+    ? `You sold an item in auction on ${marketplace} for ${priceDescription}.`
+    : `Auction won on ${marketplace} for ${priceDescription}.`;
   return {
     title: "New Sale!",
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
@@ -281,8 +282,8 @@ const describeAuctionBid = (args) => {
     priceDescription,
   } = args;
   const description = isBuyer
-    ? `You placed a ${priceDescription} bid on an auction in ${marketplace}`
-    : `New ${priceDescription} bid on an auction in ${marketplace}`;
+    ? `You placed a ${priceDescription} bid on an auction in ${marketplace}.`
+    : `New ${priceDescription} bid on an auction in ${marketplace}.`;
   return {
     title: "New Auction Bid!",
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
@@ -311,8 +312,8 @@ const describeListing = (args) => {
     tokenId,
   } = args;
   const description = isSeller
-    ? `You listed an item in ${marketplace} for ${priceDescription}`
-    : `New listing on ${marketplace} for ${priceDescription}`;
+    ? `You listed an item in ${marketplace} for ${priceDescription}.`
+    : `New listing on ${marketplace} for ${priceDescription}.`;
   return {
     title: "New Listing!",
     description,
@@ -327,8 +328,6 @@ const describeListing = (args) => {
  * @param {Number} price - The price in Ether.
  * @param {Number} collectionFloor - The collection's floor in Ether.
  * @param {String} tokenId - The token's id.
- * @param {String} tokenIds - The token ids that the wallet receiving this
- * notification currently owns.
  * @param {"user"|"server"} target - Whether the Discord user receiving
  * the notification is a user or a server.
  * @param {String} collectionUrl - The URL for the collection, retrieved
@@ -383,8 +382,6 @@ const describeEvent = (args) => {
  * @param {Number} price - The price in Ether.
  * @param {Number} collectionFloor - The collection's floor in Ether.
  * @param {String} tokenId - The token's id.
- * @param {String} tokenIds - The token ids that the wallet receiving this
- * notification currently owns.
  * @param {"user"|"server"} target - Whether the Discord user receiving
  * the notification is a user or a server.
  * @param {String} collectionUrl - The URL for the collection, retrieved
@@ -396,6 +393,7 @@ const describeEvent = (args) => {
  * @property {String} title - The embed's title (link at the top of the embed).
  * @property {String} url - The title's url.
  * @property {String} description - The embed's description of the event.
+ * @property {String} nickname - The alert's nickname.
  * @return EmbedDescription
  */
 export default async (args) => {
@@ -407,17 +405,11 @@ export default async (args) => {
     buyer: buyerAddress,
     collection,
     metadataUri,
-    tokenIds = [],
-    tokenId: originalTokenId,
+    tokenId,
     endsAt,
+    nickname,
   } = args;
 
-  const tokenId =
-    originalTokenId == null
-      ? tokenIds.length > 0
-        ? tokenIds[0]
-        : null
-      : originalTokenId;
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
         logMessage({
@@ -451,11 +443,28 @@ export default async (args) => {
     timestamp: new Date(),
   };
 
+  if (nickname) {
+    embed.fields.push([
+      {
+        name: "Alert",
+        value: nickname,
+        inline: true,
+      },
+    ]);
+  }
+
   if (collectionMetadata.name) {
     embed.fields.push([
       {
         name: "Collection",
         value: `[${collectionMetadata.name}](https://looksrare.org/collections/${collection})`,
+      },
+    ]);
+  } else {
+    embed.fields.push([
+      {
+        name: "Collection",
+        value: `[${collection}](https://looksrare.org/collections/${collection})`,
         inline: true,
       },
     ]);

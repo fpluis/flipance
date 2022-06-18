@@ -136,6 +136,8 @@ const commands = [
       option
         .setName("percentage")
         .setDescription("Difference from the floor as a percentage i.e. '20'.")
+        .setMinValue(0)
+        .setMaxValue(100)
         .setRequired(true)
     )
     .addStringOption((option) =>

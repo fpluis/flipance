@@ -136,17 +136,19 @@ export default ({ dbClient, shardId, totalShards }) => {
       }
 
       watchers.forEach(async (watcher) => {
-        const { discordId, type: alertType, channelId } = watcher;
+        const { discordId, type: alertType, channelId, nickname } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
           const embed = await buildEmbed({
             ...event,
+            nickname,
             target: alertType === "server" ? "server" : "user",
           }).catch((error) => {
             logMessage({
-              message: `Error building embed with args ${JSON.stringify({
+              message: `Error building embed with`,
+              args: {
                 ...event,
                 target: alertType === "server" ? "server" : "user",
-              })}`,
+              },
               level: "error",
               error,
             });
@@ -164,9 +166,8 @@ export default ({ dbClient, shardId, totalShards }) => {
             });
           } catch (error) {
             logMessage({
-              message: `Error handling listing with args ${JSON.stringify({
-                ...event,
-              })}`,
+              message: `Error handling listing`,
+              event,
               level: "error",
               error,
             });
