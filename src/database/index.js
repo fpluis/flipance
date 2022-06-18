@@ -1,3 +1,4 @@
+/* eslint-disable no-await-in-loop */
 /* eslint-disable max-len */
 import process from "process";
 import { readFileSync } from "fs";
@@ -194,6 +195,7 @@ const createTableQueries = [
     marketplace SMALLINT,\
     composite_identifier TEXT,\
     UNIQUE (hash, event_type, collection, token_id),\
+    UNIQUE (hash, starts_at),\
     collection CHAR(42),\
     initiator CHAR(42),\
     buyer CHAR(42),\
@@ -212,8 +214,13 @@ const createTableQueries = [
 
 const patchDBQueries = [
   `ALTER TYPE alert_type ADD VALUE 'server';`,
-  `ALTER TABLE nft_events DROP CONSTRAINT nft_events_blockchain_hash_event_type_collection_token_id_b_key;`,
-  `ALTER TABLE nft_events ADD CONSTRAINT unique_event UNIQUE (hash, event_type, collection, token_id);`,
+  `ALTER TABLE nft_events DROP CONSTRAINT unique_event;`,
+  `DELETE FROM nft_events events_1\
+  USING nft_events events_2\
+  WHERE events_1.id < events_2.id\
+  AND events_1.hash = events_2.hash AND events_1.starts_at = events_2.starts_at;`,
+  `ALTER TABLE nft_events DROP CONSTRAINT unique_hash_timestamp;`,
+  `ALTER TABLE nft_events ADD CONSTRAINT unique_hash_timestamp UNIQUE (hash, starts_at);`,
 ];
 
 /**
@@ -250,17 +257,19 @@ const patchDB = async ({
   const client = await pool.connect().catch((error) => {
     throw error;
   });
-  await Promise.all(
-    patchDBQueries.map((query) =>
-      client.query(query).catch((error) => {
-        logMessage({
-          message: `Error handling query "${query}":`,
-          level: "warning",
-          error,
-        });
-      })
-    )
-  ).catch(() => {});
+  let index = 0;
+  while (index < patchDBQueries.length) {
+    const query = patchDBQueries[index];
+    await client.query(query).catch((error) => {
+      logMessage({
+        message: `Error handling query "${query}":`,
+        level: "error",
+        error,
+      });
+    });
+    index += 1;
+  }
+
   await client.release();
   return pool.end();
 };
@@ -1808,7 +1817,10 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (
-          constraint !== "nft_events_hash_event_type_collection_token_id_key"
+          ![
+            "nft_events_hash_event_type_collection_token_id_key",
+            "unique_hash_timestamp",
+          ].includes(constraint)
         ) {
           logMessage({
             message: `Error creating NFT event with args ${JSON.stringify(
@@ -1881,7 +1893,7 @@ export const createDbClient = async ({
       return { result: "missing-arguments", objects: [] };
     }
 
-    const buildWatcherObjectQuery = `json_build_object('alert_id', alerts.id, 'address', alerts.address, 'discord_id', users.discord_id, 'channel_id', alerts.channel_id, 'type', alerts.type, 'alert_max_offer_floor_difference', alert_settings.max_offer_floor_difference, 'alert_allowed_marketplaces', alert_settings.allowed_marketplaces, 'alert_allowed_events', alert_settings.allowed_events, 'user_max_offer_floor_difference', user_settings.max_offer_floor_difference, 'user_allowed_marketplaces', user_settings.allowed_marketplaces, 'user_allowed_events', user_settings.allowed_events)`;
+    const buildWatcherObjectQuery = `json_build_object('alert_id', alerts.id, 'address', alerts.address, 'nickname', alerts.nickname, 'discord_id', users.discord_id, 'channel_id', alerts.channel_id, 'type', alerts.type, 'alert_max_offer_floor_difference', alert_settings.max_offer_floor_difference, 'alert_allowed_marketplaces', alert_settings.allowed_marketplaces, 'alert_allowed_events', alert_settings.allowed_events, 'user_max_offer_floor_difference', user_settings.max_offer_floor_difference, 'user_allowed_marketplaces', user_settings.allowed_marketplaces, 'user_allowed_events', user_settings.allowed_events)`;
     return client
       .query(
         `SELECT nft_events.*, COALESCE(alerts.watchers, '[]') AS watchers\
