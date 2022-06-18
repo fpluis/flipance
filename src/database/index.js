@@ -193,7 +193,6 @@ const createTableQueries = [
     event_type SMALLINT,\
     blockchain SMALLINT NOT NULL,\
     marketplace SMALLINT,\
-    composite_identifier TEXT,\
     UNIQUE (hash, event_type, collection, token_id),\
     UNIQUE (hash, starts_at),\
     collection CHAR(42),\
@@ -735,7 +734,6 @@ const toNFTEventObject = (nftEvent) => {
     blockchain,
     standard,
     token_id: tokenId,
-    composite_identifier: compositeIdentifier,
     metadata_uri: metadataUri,
     is_highest_offer: isHighestOffer = false,
     floor_difference: floorDifference,
