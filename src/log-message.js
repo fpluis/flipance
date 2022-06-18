@@ -56,6 +56,10 @@ export default function logMessage({ level = "info", error, ...args }) {
   };
   if (error) {
     logObject.error = error;
+    logObject.errorString = error.toString();
+    if (error.stack) {
+      logObject.errorStack = error.stack;
+    }
   }
 
   console.log(JSON.stringify(logObject));
