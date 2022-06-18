@@ -56,7 +56,7 @@ const isAllowedByPreferences = ({
     allowedMarketplaces = allowedMarketplaceIds,
     allowedEvents = allEventIds,
     maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
-    address,
+    address: watcherAddress,
     type: alertType,
   } = {},
   maxEventAge,
@@ -65,6 +65,7 @@ const isAllowedByPreferences = ({
     marketplace,
     eventType,
     floorDifference,
+    buyer,
     seller,
     createdAt,
     startsAt,
@@ -75,7 +76,9 @@ const isAllowedByPreferences = ({
     createdAt < maxEventAge ||
     minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE ||
     !allowedMarketplaces.includes(marketplace) ||
-    !allowedEvents.includes(eventType)
+    !allowedEvents.includes(eventType) ||
+    (["wallet", "collection"].includes(alertType) &&
+      ![buyer, seller].includes(watcherAddress))
   ) {
     return false;
   }
@@ -92,11 +95,6 @@ const isAllowedByPreferences = ({
 
       return 100 * floorDifference < Number(maxOfferFloorDifference);
     }
-  }
-
-  // Don't notify wallets of listings when they are not the sellers
-  if (eventType === "listing" && alertType === "wallet" && address !== seller) {
-    return false;
   }
 
   return true;
