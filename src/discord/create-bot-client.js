@@ -103,11 +103,11 @@ const isAllowedByPreferences = ({
     }
 
     if (floorDifference != null) {
-      if (floorDifference <= 0) {
+      if (floorDifference >= 0) {
         return true;
       }
 
-      return 100 * floorDifference < Number(maxOfferFloorDifference);
+      return 100 * Math.abs(floorDifference) < Number(maxOfferFloorDifference);
     }
   }
 
