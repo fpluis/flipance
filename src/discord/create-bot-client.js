@@ -67,6 +67,7 @@ const isAllowedByPreferences = ({
     floorDifference,
     buyer,
     seller,
+    initiator,
     createdAt,
     startsAt,
     tokenId,
@@ -78,10 +79,10 @@ const isAllowedByPreferences = ({
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType) ||
     (["wallet", "collection"].includes(alertType) &&
-      ![buyer, seller].includes(watcherAddress))
+      ![buyer, seller, initiator].includes(watcherAddress))
   ) {
     logMessage({
-      message: "Filtered event",
+      message: `Filtered "${eventType}" event`,
       createdTooLongAgo: createdAt < maxEventAge,
       startedTooLongAgo:
         minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE,
@@ -89,7 +90,9 @@ const isAllowedByPreferences = ({
       notAllowedEvent: !allowedEvents.includes(eventType),
       notForMe:
         ["wallet", "collection"].includes(alertType) &&
-        ![buyer, seller].includes(watcherAddress),
+        ![buyer, seller, initiator].includes(watcherAddress),
+      event,
+      level: "debug",
     });
     return false;
   }
@@ -144,10 +147,14 @@ export default ({ dbClient, shardId, totalShards }) => {
         return Promise.resolve();
       }
 
-      logMessage({ message: `NFT event`, event, watchers });
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
+          logMessage({
+            message: `Notifying watcher of ${event.eventType}`,
+            watcher,
+            level: "debug",
+          });
           const embed = await buildEmbed({
             ...event,
             watcher,
