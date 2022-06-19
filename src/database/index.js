@@ -126,6 +126,7 @@ export const createDb = async ({
 
 const createTableQueries = [
   `CREATE TYPE alert_type AS ENUM ('wallet', 'server', 'collection')`,
+  `CREATE TYPE order_type AS ENUM ('listing', 'offer')`,
   `CREATE TABLE IF NOT EXISTS settings (\
     id serial PRIMARY KEY,\
     max_offer_floor_difference DOUBLE PRECISION,\
@@ -185,7 +186,8 @@ const createTableQueries = [
   );`,
   `CREATE TABLE IF NOT EXISTS nft_events (\
     id serial PRIMARY KEY,\
-    hash TEXT NOT NULL,\
+    transaction_hash CHAR(66),\
+    order_hash TEXT,\
     created_at TIMESTAMPTZ NOT NULL,\
     starts_at TIMESTAMPTZ,\
     ends_at TIMESTAMPTZ,\
@@ -193,8 +195,8 @@ const createTableQueries = [
     event_type SMALLINT,\
     blockchain SMALLINT NOT NULL,\
     marketplace SMALLINT,\
-    UNIQUE (hash, event_type, collection, token_id),\
-    UNIQUE (hash, starts_at),\
+    UNIQUE (transaction_hash, event_type, collection, token_id),\
+    UNIQUE (order_hash, starts_at),\
     collection CHAR(42),\
     initiator CHAR(42),\
     buyer CHAR(42),\
@@ -204,6 +206,7 @@ const createTableQueries = [
     amount INT,\
     metadata_uri TEXT,\
     standard SMALLINT,\
+    order_type SMALLINT,\
     is_highest_offer BOOLEAN,\
     collection_floor DOUBLE PRECISION,\
     floor_difference NUMERIC(12, 4),\
@@ -212,14 +215,13 @@ const createTableQueries = [
 ];
 
 const patchDBQueries = [
-  `ALTER TYPE alert_type ADD VALUE 'server';`,
-  `ALTER TABLE nft_events DROP CONSTRAINT unique_event;`,
-  `DELETE FROM nft_events events_1\
-  USING nft_events events_2\
-  WHERE events_1.id < events_2.id\
-  AND events_1.hash = events_2.hash AND events_1.starts_at = events_2.starts_at;`,
-  `ALTER TABLE nft_events DROP CONSTRAINT unique_hash_timestamp;`,
-  `ALTER TABLE nft_events ADD CONSTRAINT unique_hash_timestamp UNIQUE (hash, starts_at);`,
+  `ALTER TABLE nft_events ADD order_type order_type;`,
+  `ALTER TABLE nft_events RENAME COLUMN hash TO transaction_hash;`,
+  `ALTER TABLE nft_events ALTER transaction_hash DROP NOT NULL`,
+  `ALTER TABLE nft_events ADD order_hash TEXT;`,
+  `ALTER TABLE nft_events DROP CONSTRAINT nft_events_hash_event_type_collection_token_id_key;`,
+  `ALTER TABLE nft_events ADD CONSTRAINT transaction_hash_event_type_collection_token_id UNIQUE (transaction_hash, event_type, collection, token_id);`,
+  `ALTER TABLE nft_events ADD CONSTRAINT order_hash_starts_at UNIQUE (order_hash, starts_at);`,
 ];
 
 /**
@@ -725,7 +727,8 @@ const toNFTEventObject = (nftEvent) => {
   }
 
   const {
-    hash,
+    transaction_hash: transactionHash,
+    order_hash: orderHash,
     created_at: createdAt,
     starts_at: startsAt,
     ends_at: endsAt,
@@ -738,17 +741,10 @@ const toNFTEventObject = (nftEvent) => {
     is_highest_offer: isHighestOffer = false,
     floor_difference: floorDifference,
     collection_floor: collectionFloor,
+    order_type: orderType,
     ...props
   } = nftEvent;
   const eventType = deserializeEventType(event_type);
-  let transactionHash;
-  let orderHash;
-  if (["listing", "offer"].includes(eventType)) {
-    orderHash = hash;
-  } else {
-    transactionHash = hash;
-  }
-
   if (props.watchers) {
     props.watchers = props.watchers.map(toAlertObject);
   }
@@ -767,6 +763,7 @@ const toNFTEventObject = (nftEvent) => {
     isHighestOffer,
     floorDifference: Number(floorDifference),
     collectionFloor,
+    orderType,
     tokenId,
     metadataUri,
   };
@@ -1725,6 +1722,7 @@ export const createDbClient = async ({
       isHighestOffer = false,
       collectionFloor,
       floorDifference,
+      orderType,
     } = nftEvent;
 
     // At least one id is necessary to associate an alert to a user
@@ -1736,22 +1734,16 @@ export const createDbClient = async ({
       return { result: "missing-arguments", object: null };
     }
 
-    const hash = transactionHash || orderHash;
     const values = [
-      hash,
       new Date(),
       serializeEventType(eventType),
       serializeBlockchain(blockchain),
       serializeMarketplace(marketplace),
     ];
-    const props = [
-      "hash",
-      "created_at",
-      "event_type",
-      "blockchain",
-      "marketplace",
-    ];
+    const props = ["created_at", "event_type", "blockchain", "marketplace"];
     const optionalProps = [
+      { value: transactionHash, name: "transaction_hash" },
+      { value: orderHash, name: "order_hash" },
       { value: startsAt, name: "starts_at" },
       { value: endsAt, name: "ends_at" },
       { value: tokenId, name: "token_id" },
@@ -1789,6 +1781,10 @@ export const createDbClient = async ({
             : Math.min(floorDifference, 10 ** 7),
         name: "floor_difference",
       },
+      {
+        value: orderType,
+        name: "order_type",
+      },
       { value: price, name: "price" },
     ];
     optionalProps.forEach(({ value, name }) => {
@@ -1818,6 +1814,7 @@ export const createDbClient = async ({
             "nft_events_hash_event_type_collection_token_id_key",
             "unique_hash_timestamp",
             "nft_events_hash_starts_at_key",
+            "order_hash_starts_at",
           ].includes(constraint)
         ) {
           logMessage({
