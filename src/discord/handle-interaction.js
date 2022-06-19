@@ -713,7 +713,7 @@ const handleUpdatePreferencesResponse = async (interaction, result, object) => {
     });
   }
 
-  if (result === "missing-alert") {
+  if (["missing-alert", "missing-user"].includes(result)) {
     return interaction.editReply({
       content: "You haven't created any alerts for that address.",
       ephemeral: true,
