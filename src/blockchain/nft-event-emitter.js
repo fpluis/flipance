@@ -10,7 +10,7 @@ import {
   getEvents,
 } from "../looksrare-api/index.js";
 // eslint-disable-next-line no-unused-vars
-import { ethers, providers, utils as etherUtils } from "ethers";
+import { BigNumber, ethers, providers, utils as etherUtils } from "ethers";
 import logMessage from "../log-message.js";
 import sleep from "../sleep.js";
 
@@ -515,38 +515,54 @@ export default (ethProvider, collections = []) => {
       let seller;
       let buyer;
       let eventType;
-      let sellerProfitHex;
+      let price;
+      let sellerProfit;
       if (
         parsedEvent.from &&
         parsedEvent.from === parsedEvent.initiator.toLowerCase()
       ) {
         eventType = "acceptOffer";
         const { amount = 0 } = offer.length === 0 ? {} : offer[0];
-        sellerProfitHex = amount;
+        price = Number(etherUtils.formatEther(amount));
+        const expenses = consideration
+          ? consideration.reduce((sum, consideration) => {
+              if (
+                consideration.recipient.toLowerCase() === offerer.toLowerCase()
+              ) {
+                return sum;
+              }
+
+              logMessage({
+                message: "Adding bns",
+                sum,
+                amount: consideration.amount,
+              });
+              return sum.add(consideration.amount);
+            }, BigNumber.from(0))
+          : BigNumber.from(0);
+        sellerProfit = Number(etherUtils.formatEther(amount.sub(expenses)));
         buyer = offerer;
         seller = recipient;
       } else {
         eventType = "acceptAsk";
         const { amount = 0 } =
           consideration.length === 0 ? {} : consideration[0];
-        sellerProfitHex = amount;
+        price =
+          tx.value && tx.value > 0
+            ? Number(etherUtils.formatEther(tx.value.toString()))
+            : Number(etherUtils.formatEther(amount));
+        sellerProfit = Number(etherUtils.formatEther(amount));
         buyer = recipient;
         seller = offerer;
       }
 
-      const sellerProfit = Number(etherUtils.formatEther(sellerProfitHex));
       emit(eventType, {
         transactionHash,
         marketplace,
         seller,
         buyer,
         sellerProfit,
-        price:
-          tx.value == null
-            ? sellerProfit == null
-              ? 0
-              : sellerProfit
-            : Number(etherUtils.formatEther(tx.value.toString())),
+        price,
         blockchain: "eth",
         ...parsedEvent,
       });
@@ -1011,13 +1027,17 @@ export default (ethProvider, collections = []) => {
         return "listing";
       case "OFFER":
         return "offer";
+      case "CANCEL_LIST":
+        return "cancelListing";
+      case "CANCEL_OFFER":
+        return "cancelOffer";
       default:
         return null;
     }
   };
 
   const handleLREvent = (event) => {
-    const { type, order, createdAt, token } = event;
+    const { from, hash, type, order, createdAt, token } = event;
     const { price, endTime, signer, collectionAddress: collection } = order;
     const endsAt = new Date(endTime * 1000);
     if (endsAt < new Date()) {
@@ -1028,6 +1048,7 @@ export default (ethProvider, collections = []) => {
     if (eventType != null) {
       const eventProps = {
         ...order,
+        initiator: from,
         price: Number(etherUtils.formatEther(price)),
         startsAt: new Date(createdAt),
         endsAt,
@@ -1050,6 +1071,18 @@ export default (ethProvider, collections = []) => {
         eventProps.metadataUri = tokenURI;
       }
 
+      if (eventType === "cancelListing") {
+        eventProps.orderType = "listing";
+        eventProps.transactionHash = hash;
+        emit("cancelOrder", eventProps);
+      }
+
+      if (eventType === "cancelOffer") {
+        eventProps.orderType = "offer";
+        eventProps.transactionHash = hash;
+        emit("cancelOrder", eventProps);
+      }
+
       emit(eventType, eventProps);
     }
   };
@@ -1059,7 +1092,11 @@ export default (ethProvider, collections = []) => {
     const events = await Promise.all([
       getEvents({ type: "LIST" }),
       getEvents({ type: "OFFER" }),
-    ]).then(([lists, offers]) => lists.concat(offers));
+      getEvents({ type: "CANCEL_LIST" }),
+      getEvents({ type: "CANCEL_OFFER" }),
+    ]).then(([lists, offers, cancelListings, cancelOffers]) =>
+      lists.concat(offers, cancelListings, cancelOffers)
+    );
     const newUniqueEvents = events.filter(
       ({ id }) => !lastEventIds.includes(id)
     );
