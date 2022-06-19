@@ -525,20 +525,10 @@ export default (ethProvider, collections = []) => {
         const { amount = 0 } = offer.length === 0 ? {} : offer[0];
         price = Number(etherUtils.formatEther(amount));
         const expenses = consideration
-          ? consideration.reduce((sum, consideration) => {
-              if (
-                consideration.recipient.toLowerCase() === offerer.toLowerCase()
-              ) {
-                return sum;
-              }
-
-              logMessage({
-                message: "Adding bns",
-                sum,
-                amount: consideration.amount,
-              });
-              return sum.add(consideration.amount);
-            }, BigNumber.from(0))
+          ? consideration.reduce(
+              (sum, consideration) => sum.add(consideration.amount),
+              BigNumber.from(0)
+            )
           : BigNumber.from(0);
         sellerProfit = Number(etherUtils.formatEther(amount.sub(expenses)));
         buyer = offerer;
@@ -631,17 +621,6 @@ export default (ethProvider, collections = []) => {
         amount: amount.toNumber(),
         transactionHash,
         blockchain: "eth",
-        ...parsedEvent,
-      });
-    });
-    contract.on(contract.filters.CancelMultipleOrders(), async (...args) => {
-      const event = args[args.length - 1];
-      const { transactionHash } = event;
-      const parsedEvent = await parseEvent(event, "cancelOrder");
-      emit("cancelOrder", {
-        transactionHash,
-        blockchain: "eth",
-        marketplace,
         ...parsedEvent,
       });
     });
