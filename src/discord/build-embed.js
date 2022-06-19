@@ -31,8 +31,12 @@ const marketplaceIdToMdLink = (marketplace) => {
 };
 
 /* Generate the item's URL on the marketplace where the event comes from */
-const generateTokenMarketplaceURL = (marketplace, collection, tokenId) => {
-  switch (marketplace) {
+const generateTokenMarketplaceURL = (marketplaceId, collection, tokenId) => {
+  if (tokenId == null) {
+    return `https://looksrare.org/collections/${collection}`;
+  }
+
+  switch (marketplaceId) {
     case "looksRare":
     case "foundation":
       return `https://looksrare.org/collections/${collection}/${tokenId}`;
@@ -49,22 +53,24 @@ const generateTokenMarketplaceURL = (marketplace, collection, tokenId) => {
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
 const roundDecimals = (number, decimals = 6) =>
-  Math.round((Number(number) + Number.EPSILON) * 10 ** decimals) /
-  10 ** decimals;
+  Number(
+    Math.round((Number(number) + Number.EPSILON) * 10 ** decimals) /
+      10 ** decimals
+  ).toLocaleString("en-US");
 
 const describePrice = ({ price, floorDifference, collectionFloor }) => {
   const priceString = `${roundDecimals(price)} ETH`;
   return collectionFloor == null
     ? `${priceString}`
     : floorDifference === 0
-    ? `${priceString}, at the collection's floor price`
+    ? `${priceString} (at the collection's floor price)`
     : floorDifference < 0
-    ? `${priceString}, ${roundDecimals(
+    ? `${priceString} (${roundDecimals(
         Math.abs(floorDifference) * 100
-      )}% below the floor price (${collectionFloor} ETH)`
-    : `${priceString}, ${roundDecimals(
+      )}% below the current ${collectionFloor} ETH floor price)`
+    : `${priceString} (${roundDecimals(
         floorDifference * 100
-      )}% above the floor price (${collectionFloor} ETH)`;
+      )}% above the current ${collectionFloor} ETH floor price)`;
 };
 
 /**
@@ -87,45 +93,108 @@ const describePrice = ({ price, floorDifference, collectionFloor }) => {
  */
 const describeOffer = ({
   tokenId,
-  target,
-  collectionUrl,
-  collectionMetadata,
+  buyer,
   priceDescription,
+  collectionDescription,
+  subjectDescription,
+  marketplace,
+  watcher,
+  initiator,
+  target,
+  marketplaceId,
 }) => {
-  let description;
-  if (target === "user") {
-    if (tokenId == null) {
-      const firstSentence =
-        collectionMetadata.name && collectionMetadata.name.length > 0
-          ? `All your ${collectionMetadata.name} NFTs received a collection offer of ${priceDescription} at LooksRare!`
-          : `Some of your NFTs received a collection offer of ${priceDescription} at LooksRare!`;
-      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
-    } else {
-      const firstSentence =
-        collectionMetadata.name && collectionMetadata.name.length > 0
-          ? `You received a collection offer of ${priceDescription} on your ${collectionMetadata.name} #${tokenId} at LooksRare!`
-          : `You received a collection offer of ${priceDescription} on one of your NFTs at LooksRare!`;
-      description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+  const subject =
+    watcher.address === initiator
+      ? subjectDescription
+      : `[${makeAddressReadable(
+          buyer
+        )}](https://etherscan.io/address/${buyer})`;
+  let offerDescription;
+  if (tokenId == null) {
+    offerDescription = `collection offer for all ${collectionDescription} NFTs`;
+    if (watcher.address !== initiator && target === "user") {
+      offerDescription = `${offerDescription} (${subjectDescription} owns some)`;
     }
   } else {
-    const firstSentence =
-      collectionMetadata.name && collectionMetadata.name.length > 0
-        ? `Someone made a collection offer of ${priceDescription} on all ${collectionMetadata.name} NFTs at LooksRare!`
-        : `Someone made a collection offer of ${priceDescription} at LooksRare!`;
-    description = `${firstSentence}\n\nYou will also earn $LOOKS if you accept it.`;
+    offerDescription = `single offer for ${collectionDescription} #${tokenId}`;
+    if (watcher.address !== initiator && target === "user") {
+      offerDescription = `${offerDescription} (${subjectDescription} currently owns it)`;
+    }
   }
 
   return {
     title: "New offer!",
-    url: tokenId == null ? collectionUrl : `${collectionUrl}/${tokenId}`,
-    description,
+    description: `${subject} made a ${priceDescription} ${offerDescription} at ${marketplace}!${
+      marketplaceId === "looksRare"
+        ? "\n\nThe seller will also earn $LOOKS by accepting the offer."
+        : ""
+    }`,
+  };
+};
+
+/**
+ * Create the embed descriptions for a cancel order event.
+ * @param {Number} price - The price in Ether.
+ * @param {Number} collectionFloor - The collection's floor in Ether.
+ * @param {String} tokenId - The token's id.
+ * @param {"user"|"server"} target - Whether the Discord user receiving
+ * the notification is a user or a server.
+ * @param {String} collectionUrl - The URL for the collection, retrieved
+ * from the collection's metadata.
+ * @param {String} collectionMetadata - The collection's metadata.
+ * @param {String} collectionMetadata.name - The collection's name.
+ * @param {String} priceDescription - The price description in Ether.
+ * @typedef {Object} EmbedDescription
+ * @property {String} title - The embed's title (link at the top of the embed).
+ * @property {String} url - The title's url.
+ * @property {String} description - The embed's description of the event.
+ * @return EmbedDescription
+ */
+const describeCancelOrder = ({
+  tokenId,
+  initiator,
+  subjectDescription,
+  collectionDescription,
+  priceDescription,
+  orderType,
+  watcher,
+  marketplace,
+}) => {
+  const subject =
+    initiator === watcher.address
+      ? subjectDescription
+      : `[${makeAddressReadable(
+          initiator
+        )}](https://etherscan.io/address/${initiator})`;
+  if (orderType == null) {
+    return {
+      title: "Order canceled",
+      description: `${subject} canceled an order at ${marketplace}`,
+    };
+  }
+
+  let orderDescription;
+  let title;
+  if (orderType === "offer") {
+    title = "Offer canceled";
+    orderDescription = tokenId
+      ? `offer for ${collectionDescription} #${tokenId}`
+      : `collection offer for all ${collectionDescription} NFTs`;
+  } else if (orderType === "listing") {
+    title = "Listing canceled";
+    orderDescription = tokenId
+      ? `listing of ${collectionDescription} #${tokenId}`
+      : `listing of some ${collectionDescription} NFTs`;
+  }
+
+  return {
+    title,
+    description: `${subject} canceled a ${priceDescription} ${orderDescription} at ${marketplace}`,
   };
 };
 
 /**
  * Create the embed description for an acceptOffer event.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} marketplaceId - The marketplace's id. Complete list is
  * available at data/marketplaces.json
  * @param {String} collection - The collection's address on the blockchain.
@@ -136,22 +205,32 @@ const describeOffer = ({
  */
 const describeAcceptOffer = (args) => {
   const {
-    isBuyer,
-    isSeller,
-    marketplaceId,
-    collection,
-    tokenId,
+    subjectDescription,
     marketplace,
     priceDescription,
+    collectionDescription,
+    tokenId,
+    watcher,
+    buyer,
+    seller,
   } = args;
-  const description = isBuyer
-    ? `Your offer was accepted on ${marketplace} for ${priceDescription}.`
-    : isSeller
-    ? `You accepted an offer on ${marketplace} for ${priceDescription}.`
-    : `Offer accepted on ${marketplace} for ${priceDescription}.`;
+  let description;
+  const sellerDescription = `[${makeAddressReadable(
+    seller
+  )}](https://etherscan.io/address/${seller})`;
+  const buyerDescription = `[${makeAddressReadable(
+    seller
+  )}](https://etherscan.io/address/${buyer})`;
+  if (watcher.address === buyer) {
+    description = `${subjectDescription}'s ${priceDescription} offer on ${collectionDescription} #${tokenId} was accepted at ${marketplace}.`;
+  } else if (watcher.address === seller) {
+    description = `${subjectDescription} accepted ${buyerDescription}'s ${priceDescription} offer on ${collectionDescription} #${tokenId} at ${marketplace}.`;
+  } else {
+    description = `${sellerDescription} accepted ${buyerDescription}'s ${priceDescription} offer on ${collectionDescription} #${tokenId} at ${marketplace}.`;
+  }
+
   return {
-    title: "New Sale!",
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
+    title: "Offer accepted!",
     description,
   };
 };
@@ -161,8 +240,6 @@ const describeIntermediary = (intermediary) =>
 
 /**
  * Create the embed description for an acceptAsk event.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} marketplaceId - The marketplace's id. Complete list is
  * available at data/marketplaces.json
  * @param {String} collection - The collection's address on the blockchain.
@@ -173,33 +250,42 @@ const describeIntermediary = (intermediary) =>
  */
 const describeAcceptAsk = (args) => {
   const {
-    isBuyer,
-    isSeller,
-    marketplaceId,
-    collection,
-    tokenId,
+    subjectDescription,
     marketplace,
     priceDescription,
+    collectionDescription,
+    tokenId,
+    watcher,
+    buyer,
+    seller,
     intermediary,
   } = args;
+  let description;
   const intermediaryString = intermediary
     ? ` through ${describeIntermediary(intermediary)}`
     : "";
-  const description = isBuyer
-    ? `You bought an NFT on ${marketplace} for ${priceDescription}${intermediaryString}`
-    : isSeller
-    ? `You sold your NFT on ${marketplace} for ${priceDescription}${intermediaryString}`
-    : `NFT bought on ${marketplace} for ${priceDescription}${intermediaryString}`;
+  const sellerDescription = `[${makeAddressReadable(
+    seller
+  )}](https://etherscan.io/address/${seller})`;
+  const buyerDescription = `[${makeAddressReadable(
+    buyer
+  )}](https://etherscan.io/address/${buyer})`;
+  if (watcher.address === buyer) {
+    description = `${subjectDescription} bought ${sellerDescription}'s ${collectionDescription} #${tokenId} for ${priceDescription} at ${marketplace}${intermediaryString}.`;
+  } else if (watcher.address === seller) {
+    description = `${subjectDescription} sold their ${collectionDescription} #${tokenId} to ${buyerDescription} for ${priceDescription} at ${marketplace}${intermediaryString}.`;
+  } else {
+    description = `${sellerDescription} sold their ${collectionDescription} #${tokenId} to ${buyerDescription} for ${priceDescription} at ${marketplace}${intermediaryString}.`;
+  }
+
   return {
     title: "New Sale!",
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     description,
   };
 };
 
 /**
  * Create the embed description for a createAuction event.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} marketplaceId - The marketplace's id. Complete list is
  * available at data/marketplaces.json
  * @param {String} collection - The collection's address on the blockchain.
@@ -210,27 +296,26 @@ const describeAcceptAsk = (args) => {
  */
 const describeCreateAuction = (args) => {
   const {
-    isSeller,
-    marketplaceId,
-    collection,
-    tokenId,
+    watcher,
+    subjectDescription,
+    initiator,
     marketplace,
     priceDescription,
   } = args;
-  const description = isSeller
-    ? `You created an auction on ${marketplace} with reserve price ${priceDescription}.`
-    : `Auction created on ${marketplace} with reserve price ${priceDescription}.`;
+  const subject =
+    watcher.address === initiator
+      ? subjectDescription
+      : `[${makeAddressReadable(
+          initiator
+        )}](https://etherscan.io/address/${initiator})`;
   return {
-    title: "New Sale!",
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
-    description,
+    title: "New Auction Created!",
+    description: `${subject} created an auction with reserve price ${priceDescription} at ${marketplace}.`,
   };
 };
 
 /**
  * Create the embed description for a settleAuction event.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} marketplaceId - The marketplace's id. Complete list is
  * available at data/marketplaces.json
  * @param {String} collection - The collection's address on the blockchain.
@@ -241,29 +326,36 @@ const describeCreateAuction = (args) => {
  */
 const describeSettleAuction = (args) => {
   const {
-    isBuyer,
-    isSeller,
-    marketplaceId,
-    collection,
-    tokenId,
+    subjectDescription,
     marketplace,
     priceDescription,
+    collectionDescription,
+    tokenId,
+    watcher,
+    buyer,
+    seller,
   } = args;
-  const description = isBuyer
-    ? `You won an auction on ${marketplace} for ${priceDescription}.`
-    : isSeller
-    ? `You sold an item in auction on ${marketplace} for ${priceDescription}.`
-    : `Auction won on ${marketplace} for ${priceDescription}.`;
+  let description;
+  const sellerDescription = `[${makeAddressReadable(
+    seller
+  )}](https://etherscan.io/address/${seller})`;
+  const buyerDescription = `[${makeAddressReadable(
+    buyer
+  )}](https://etherscan.io/address/${buyer})`;
+  if (watcher.address === buyer) {
+    description = `${subjectDescription} won an auction for ${sellerDescription}'s ${collectionDescription} #${tokenId} for ${priceDescription} at ${marketplace}.`;
+  } else {
+    description = `${subjectDescription} sold their ${collectionDescription} #${tokenId} in auction to ${buyerDescription} for ${priceDescription} at ${marketplace}.`;
+  }
+
   return {
-    title: "New Sale!",
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
+    title: "Auction sold!",
     description,
   };
 };
 
 /**
  * Create the embed description for an auctionBid event.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
  * @param {String} marketplaceId - The marketplace's id. Complete list is
  * available at data/marketplaces.json
  * @param {String} collection - The collection's address on the blockchain.
@@ -272,28 +364,37 @@ const describeSettleAuction = (args) => {
  * @param {String} marketplace - The marketplace's name.
  * @return EmbedDescription
  */
-const describeAuctionBid = (args) => {
-  const {
-    isBuyer,
-    marketplaceId,
-    collection,
-    tokenId,
-    marketplace,
-    priceDescription,
-  } = args;
-  const description = isBuyer
-    ? `You placed a ${priceDescription} bid on an auction in ${marketplace}.`
-    : `New ${priceDescription} bid on an auction in ${marketplace}.`;
+const describeAuctionBid = ({
+  tokenId,
+  buyer,
+  priceDescription,
+  collectionDescription,
+  subjectDescription,
+  marketplace,
+  watcher,
+  initiator,
+  target,
+}) => {
+  const subject =
+    watcher.address === initiator
+      ? subjectDescription
+      : `[${makeAddressReadable(
+          buyer
+        )}](https://etherscan.io/address/${buyer})`;
+
+  let bidDescription = `bid for ${collectionDescription} #${tokenId}`;
+  if (watcher.address !== initiator && target === "user") {
+    bidDescription = `${bidDescription} (${subjectDescription} currently owns it)`;
+  }
+
   return {
-    title: "New Auction Bid!",
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
-    description,
+    title: "New auction bid!",
+    description: `${subject} placed a ${priceDescription} ${bidDescription} at ${marketplace}!`,
   };
 };
 
 /**
  * Create the embed description for a listing event.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {String} priceDescription - The price description in Ether.
  * @param {String} marketplace - The marketplace's name.
  * @param {String} marketplaceId - One of the marketplace ids defined in
@@ -304,27 +405,47 @@ const describeAuctionBid = (args) => {
  */
 const describeListing = (args) => {
   const {
-    isSeller,
     marketplace,
-    marketplaceId,
-    priceDescription,
-    collection,
+    watcher,
+    seller,
+    collectionDescription,
     tokenId,
+    priceDescription,
+    subjectDescription,
   } = args;
-  const description = isSeller
-    ? `You listed an item in ${marketplace} for ${priceDescription}.`
-    : `New listing on ${marketplace} for ${priceDescription}.`;
+  const subject =
+    watcher.address === seller
+      ? subjectDescription
+      : `[${makeAddressReadable(
+          seller
+        )}](https://etherscan.io/address/${seller})`;
   return {
     title: "New Listing!",
-    description,
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
+    description: `${subject} listed ${collectionDescription} #${tokenId} for ${priceDescription} at ${marketplace}`,
   };
 };
 
+const describeSubject = ({ watcher: { nickname, address } }) => {
+  if (nickname == null) {
+    return `[${makeAddressReadable(
+      address
+    )}](https://etherscan.io/address/${address})`;
+  }
+
+  return `[${nickname}](https://etherscan.io/address/${address})`;
+};
+
+const describeCollection = ({
+  collectionMetadata,
+  collectionUrl,
+  collection,
+}) =>
+  collectionMetadata.name && collectionMetadata.name.length > 0
+    ? `[${collectionMetadata.name}](${collectionUrl})`
+    : `[${makeAddressReadable(collection)}](${collectionUrl})`;
+
 /**
  * Create the embed descriptions for an NFT event.
- * @param {Boolean} isBuyer - Whether the notified user is the buyer.
- * @param {Boolean} isSeller - Whether the notified user is the seller.
  * @param {Number} price - The price in Ether.
  * @param {Number} collectionFloor - The collection's floor in Ether.
  * @param {String} tokenId - The token's id.
@@ -344,9 +465,13 @@ const describeListing = (args) => {
 const describeEvent = (args) => {
   const { eventType } = args;
   args.priceDescription = describePrice(args);
+  args.subjectDescription = describeSubject(args);
+  args.collectionDescription = describeCollection(args);
   switch (eventType) {
     case "offer":
       return describeOffer(args);
+    case "cancelOrder":
+      return describeCancelOrder(args);
     case "acceptOffer":
       return describeAcceptOffer(args);
     case "acceptAsk":
@@ -423,10 +548,9 @@ export default async (args) => {
   const collectionUrl = `https://looksrare.org/collections/${collection}`;
   const embed = {
     color: 0x0099ff,
+    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     ...describeEvent({
       ...args,
-      isBuyer: alertAddress === buyerAddress,
-      isSeller: alertAddress === sellerAddress,
       collectionMetadata,
       marketplace,
       marketplaceId,
@@ -442,11 +566,11 @@ export default async (args) => {
     timestamp: new Date(),
   };
 
-  if (nickname) {
+  if (nickname || alertAddress) {
     embed.fields.push([
       {
         name: "Alert",
-        value: nickname,
+        value: nickname || makeAddressReadable(alertAddress),
         inline: true,
       },
     ]);
