@@ -89,7 +89,7 @@ const isAllowedByPreferences = ({
       notAllowedMarket: !allowedMarketplaces.includes(marketplace),
       notAllowedEvent: !allowedEvents.includes(eventType),
       notForMe:
-        ["wallet", "collection"].includes(alertType) &&
+        alertType === "wallet" &&
         ![buyer, seller, initiator].includes(watcherAddress),
       event,
       level: "debug",

@@ -85,6 +85,17 @@ const pollNFTEvents = async ({
       return events.concat({ ...event, watchers: myWatchers });
     }
 
+    if (myWatchers.length !== watchers.length) {
+      logMessage({
+        message: "Some watchers were filtered",
+        event,
+        watchers,
+        totalShards,
+        shardId,
+        level: "debug",
+      });
+    }
+
     return events;
   }, []);
   const lastPolledId =
