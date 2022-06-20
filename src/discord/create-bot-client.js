@@ -78,7 +78,7 @@ const isAllowedByPreferences = ({
     minuteDifference(startsAt, maxEventAge) > MAX_MINUTE_DIFFERENCE ||
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType) ||
-    (["wallet", "collection"].includes(alertType) &&
+    (alertType === "wallet" &&
       ![buyer, seller, initiator].includes(watcherAddress))
   ) {
     logMessage({
