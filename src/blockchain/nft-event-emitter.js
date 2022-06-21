@@ -36,7 +36,7 @@ const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
 
 const LR_SLICE_SIZE = 40;
 const ONE_MINUTE = 1 * 60 * 1000;
-const POLL_LR_ORDERS_PERIOD = 5 * 60 * 1000;
+const POLL_LR_ORDERS_PERIOD = 1 * 60 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 const WAIT_FOR_COLLECTIONS = 5 * 1000;
 const LOOKSRARE_CACHE_DURATION = 10000;
@@ -353,7 +353,10 @@ export default (ethProvider, collections = []) => {
       let indexInLogs = logs.findIndex(
         ({ logIndex }) => logIndex === event.logIndex
       );
-      if (contractAddress === ethContracts.openSeaSeaport[ETHEREUM_NETWORK]) {
+      if (
+        contractAddress != null &&
+        contractAddress === ethContracts.openSeaSeaport[ETHEREUM_NETWORK]
+      ) {
         // Traverse the tx's logs forwards to find the transfer log
         while (indexInLogs < logs.length) {
           const parsedTransferLog = await parseTransferLog(
@@ -1025,13 +1028,22 @@ export default (ethProvider, collections = []) => {
 
   const handleLREvent = (event) => {
     const { from, hash, type, order, createdAt, token } = event;
-    const { price, endTime, signer, collectionAddress: collection } = order;
+    const {
+      price,
+      endTime,
+      signer,
+      collectionAddress: collection,
+      status,
+    } = order;
     const endsAt = new Date(endTime * 1000);
-    if (endsAt < new Date()) {
+    const eventType = mapLREventType(type);
+    if (
+      endsAt < new Date() ||
+      (["offer", "listing"].includes(eventType) && status !== "VALID")
+    ) {
       return;
     }
 
-    const eventType = mapLREventType(type);
     if (eventType != null) {
       const eventProps = {
         ...order,
