@@ -1050,7 +1050,7 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `DELETE from alerts WHERE user_id = (SELECT user_id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
+        `DELETE from alerts WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND ${identifierCondition} RETURNING *`,
         values
       )
       .then(({ rows }) => {

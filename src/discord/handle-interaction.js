@@ -421,6 +421,46 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
   }
 };
 
+const handleDeleteAlertResponse = async ({
+  discordClient,
+  interaction,
+  result,
+  address,
+  nickname,
+  alert: { type } = {},
+}) => {
+  const {
+    user: { id: discordId },
+  } = interaction;
+  const identifier =
+    address == null
+      ? `with nickname "${nickname}"`
+      : `for address "${address}"`;
+  const alertDescription =
+    type === "server" ? `Server alert` : `Personal alert`;
+  switch (result) {
+    case "success":
+      await discordClient.users.cache
+        .get(discordId)
+        .send(`${alertDescription} ${identifier} successfully removed.`);
+      return interaction.editReply({
+        content: `${alertDescription} ${identifier} successfully removed.`,
+        ephemeral: true,
+      });
+    case "missing-arguments":
+      return interaction.editReply({
+        content: `Please specify a valid address or nickname to delete.`,
+        ephemeral: true,
+      });
+    case "missing-alert":
+    default:
+      return interaction.editReply({
+        content: `You have no alert set up ${identifier}.`,
+        ephemeral: true,
+      });
+  }
+};
+
 /**
  * Handle the /deletealert slash command. Only users with the Admin permission in a discord server can delete alerts for that server.
  * @param  {Object} params
@@ -443,13 +483,63 @@ const handleDeleteAlert = async ({ dbClient, discordClient, interaction }) => {
   const address = isValidAddress(alert) ? alert : null;
   const nickname = isValidNickname(alert) ? alert : null;
 
-  const { result } = await dbClient
+  if (address != null && !isValidAddress(address)) {
+    return interaction.editReply({
+      content: `Address "${address}" is invalid. Please introduce a valid address.`,
+      ephemeral: true,
+    });
+  }
+
+  if (address != null) {
+    const { objects: addressAlerts } = await dbClient.getAlertsByAddress({
+      address,
+    });
+    const conflictingAddresses = addressAlerts.filter(
+      ({ discordId: alertDiscordId }) =>
+        [discordId, guildId].includes(alertDiscordId)
+    );
+    // There is both a user and server alert with the same nickname
+    if (
+      conflictingAddresses.length === 2 &&
+      memberPermissions.has("ADMINISTRATOR")
+    ) {
+      const customId = `deletealert/${address}`;
+      const row = new MessageActionRow().addComponents(
+        new MessageSelectMenu()
+          .setCustomId(customId)
+          .setMinValues(1)
+          .setMaxValues(1)
+          .setPlaceholder("Pick an alert...")
+          .addOptions([
+            {
+              label: "Server alert",
+              description: "The server's alert for this address",
+              value: "server",
+            },
+            {
+              label: "User alert",
+              description: "Your personal alert for this address",
+              value: "user",
+            },
+          ])
+      );
+
+      return interaction.editReply({
+        content:
+          "Two alerts share the same address. Choose which one you want to delete.",
+        components: [row],
+        ephemeral: true,
+      });
+    }
+  }
+
+  const { result, object } = await dbClient
     .deleteAlert({
       discordId,
       address,
       nickname,
     })
-    .then(({ result }) => {
+    .then(({ result, object }) => {
       if (
         result === "missing-alert" &&
         memberPermissions.has("ADMINISTRATOR")
@@ -461,34 +551,16 @@ const handleDeleteAlert = async ({ dbClient, discordClient, interaction }) => {
         });
       }
 
-      return { result };
+      return { result, object };
     });
-
-  const identifier =
-    address == null
-      ? `with nickname "${nickname}"`
-      : `for address "${address}"`;
-  switch (result) {
-    case "success":
-      await discordClient.users.cache
-        .get(discordId)
-        .send(`Alert ${identifier} successfully removed.`);
-      return interaction.editReply({
-        content: `Alert ${identifier} successfully removed.`,
-        ephemeral: true,
-      });
-    case "missing-arguments":
-      return interaction.editReply({
-        content: `Please specify a valid address or nickname to delete.`,
-        ephemeral: true,
-      });
-    case "missing-alert":
-    default:
-      return interaction.editReply({
-        content: `You have no alert set up ${identifier}.`,
-        ephemeral: true,
-      });
-  }
+  return handleDeleteAlertResponse({
+    discordClient,
+    interaction,
+    result,
+    address,
+    nickname,
+    alert: object,
+  });
 };
 
 /**
@@ -1005,6 +1077,52 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
 };
 
 /**
+ * Handles the interaction response when a user selects which of the two alerts with the same address they want to delete. The function handleDeleteAlert is the one that handles the initial /deletelert slash command.
+ * @param  {Object} params
+ * @param  {Object} params.dbClient - The initialized database client.
+ * @param  {CommandInteraction} params.interaction - The user interaction.
+ * @param  {CommandInteraction} params.alert - The "alert" interaction option passed to the original slash command interaction.
+ * @return {void}
+ */
+const handleDeleteCollidingAlert = async ({
+  dbClient,
+  discordClient,
+  interaction,
+  alert: address,
+}) => {
+  const {
+    guildId,
+    user: { id: discordId },
+    values,
+  } = interaction;
+  await interaction.deferReply({
+    content: "Deleting your alert...",
+    ephemeral: true,
+  });
+  let response;
+  if (values.length === 1 && values.includes("user")) {
+    response = await dbClient.deleteAlert({
+      discordId,
+      address,
+    });
+  } else {
+    response = await dbClient.deleteAlert({
+      discordId: guildId,
+      address,
+    });
+  }
+
+  const { result, object } = response;
+  return handleDeleteAlertResponse({
+    discordClient,
+    interaction,
+    result,
+    address,
+    alert: object,
+  });
+};
+
+/**
  * Routes the SelectMenu interaction to its handler, depending on the select menu "type" which is set within the SelectMenu's custom id. It is necessary to specify the id in this way to pass the interaction option "alert" from the initial interaction to the pick handlers because the latter don't have access to interaction options.
  * @param  {Object} args
  * @param  {CommandInteraction} args.interaction - The user interaction.
@@ -1017,6 +1135,8 @@ const handleSelectMenu = async (args) => {
   const [menuType, alertString] = customId.split("/");
   const alert = alertString === "null" ? null : alertString;
   switch (menuType) {
+    case "deletealert":
+      return handleDeleteCollidingAlert({ ...args, alert });
     case "allowedevents":
       return handleAllowedEventsPick({ ...args, alert });
     case "allowedmarketplaces":
