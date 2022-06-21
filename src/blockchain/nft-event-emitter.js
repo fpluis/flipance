@@ -16,7 +16,11 @@ import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const { MARKETPLACES, ETHEREUM_NETWORK = "homestead" } = process.env;
+const {
+  LOOKSRARE_RATE_LIMIT = 120,
+  MARKETPLACES,
+  ETHEREUM_NETWORK = "homestead",
+} = process.env;
 
 const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const ethContracts = JSON.parse(readFileSync("data/eth-contracts.json"));
@@ -31,6 +35,7 @@ const townStarAddress = "0xc36cf0cfcb5d905b8b513860db0cfe63f6cf9f5c";
 const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
 
 const LR_SLICE_SIZE = 40;
+const ONE_MINUTE = 1 * 60 * 1000;
 const POLL_LR_ORDERS_PERIOD = 5 * 60 * 1000;
 const MAX_BLOCK_CACHE_SIZE = 100;
 const WAIT_FOR_COLLECTIONS = 5 * 1000;
@@ -873,13 +878,15 @@ export default (ethProvider, collections = []) => {
     const otherCollections = collections.slice(LR_SLICE_SIZE);
     const pollEnded = new Date();
     const msElapsed = pollEnded - pollStarted;
-    logMessage({
-      message: `Polling ${LR_SLICE_SIZE} ${queryType} took ${msElapsed}ms`,
-    });
     if (otherCollections.length > 0) {
-      // const delay = calculateOrderPollDelay(collectionSlice.length, msElapsed);
-      const delay = 1000;
-      if (delay > 0) {
+      const delay = ONE_MINUTE / (LOOKSRARE_RATE_LIMIT / LR_SLICE_SIZE);
+      logMessage({
+        message: `Polling ${LR_SLICE_SIZE} ${queryType} took ${msElapsed}ms. Intended delay: ${delay}ms. Waiting ${
+          delay - msElapsed > 0 ? delay - msElapsed : 0
+        }ms before the next poll.`,
+        level: "debug",
+      });
+      if (delay - msElapsed > 0) {
         await sleep(delay);
       }
 
@@ -955,6 +962,7 @@ export default (ethProvider, collections = []) => {
         const { price, endTime: endsAt, startTime: startsAt, signer } = offer;
         emit("offer", {
           ...offer,
+          isHighestOffer: true,
           price: Number(etherUtils.formatEther(price)),
           buyer: signer,
           startsAt: new Date(startsAt * 1000),
@@ -1069,20 +1077,22 @@ export default (ethProvider, collections = []) => {
   const pollLREvents = async (lastEventIds = []) => {
     const pollStarted = new Date();
     const events = await Promise.all([
-      getEvents({ type: "LIST" }),
-      getEvents({ type: "OFFER" }),
       getEvents({ type: "CANCEL_LIST" }),
       getEvents({ type: "CANCEL_OFFER" }),
-    ]).then(([lists, offers, cancelListings, cancelOffers]) =>
+      getEvents({ type: "LIST" }),
+      getEvents({ type: "OFFER" }),
+    ]).then(([cancelListings, cancelOffers, lists, offers]) =>
       lists.concat(offers, cancelListings, cancelOffers)
     );
-    const newUniqueEvents = events.filter(
-      ({ id }) => !lastEventIds.includes(id)
-    );
+    const newUniqueEvents = events
+      .filter(({ id }) => !lastEventIds.includes(id))
+      .sort(
+        ({ createdAt: createdAt1 }, { createdAt: createdAt2 }) =>
+          createdAt1 - createdAt2
+      );
     newUniqueEvents.forEach((event) => {
       handleLREvent(event);
     });
-    logMessage({ message: `New LR events`, count: newUniqueEvents.length });
     if (polling) {
       const msElapsed = new Date() - pollStarted;
       await sleep(LOOKSRARE_CACHE_DURATION - msElapsed);
