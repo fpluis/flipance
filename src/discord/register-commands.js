@@ -7,6 +7,7 @@
 
 import path from "path";
 import dotenv from "dotenv";
+import { readFileSync } from "fs";
 import { SlashCommandBuilder } from "@discordjs/builders";
 import { REST } from "@discordjs/rest";
 import { Routes } from "discord-api-types/v9";
@@ -20,12 +21,19 @@ const {
   DISCORD_CLIENT_ID_TEST,
   DISCORD_BOT_TOKEN,
   DISCORD_BOT_TOKEN_TEST,
+  MARKETPLACES,
   MAX_NICKNAME_LENGTH = 50,
 } = process.env;
 
+const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
+
+const allMarketplaceIds = allMarketplaces.map(({ id }) => id);
+const allowedMarketplaceIds =
+  MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
+
 const argv = minimist(process.argv.slice(2));
 
-const commands = [
+const rawCommands = [
   new SlashCommandBuilder()
     .setName("help")
     .setDescription("Provides information about the bot and its commands."),
@@ -108,16 +116,6 @@ const commands = [
         )
     ),
   new SlashCommandBuilder()
-    .setName("setallowedmarketplaces")
-    .setDescription("Choose the marketplaces you wish to receive alerts from.")
-    .addStringOption((option) =>
-      option
-        .setName("alert")
-        .setDescription(
-          "Alert's nickname or address. Leave empty to change your account settings."
-        )
-    ),
-  new SlashCommandBuilder()
     .setName("setallowedevents")
     .setDescription("Choose the NFT events you wish to be alerted of.")
     .addStringOption((option) =>
@@ -162,7 +160,26 @@ const commands = [
         .setDescription("The new nickname for the alert.")
         .setRequired(true)
     ),
-].map((command) => command.toJSON());
+];
+
+if (allowedMarketplaceIds.length > 1) {
+  rawCommands.push(
+    new SlashCommandBuilder()
+      .setName("setallowedmarketplaces")
+      .setDescription(
+        "Choose the marketplaces you wish to receive alerts from."
+      )
+      .addStringOption((option) =>
+        option
+          .setName("alert")
+          .setDescription(
+            "Alert's nickname or address. Leave empty to change your account settings."
+          )
+      )
+  );
+}
+
+const commands = rawCommands.map((command) => command.toJSON());
 
 const rest = new REST({ version: "9" }).setToken(
   argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
