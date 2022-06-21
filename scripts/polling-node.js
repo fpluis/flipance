@@ -154,15 +154,6 @@ const monitorBlockchainEvents = async ({
       price > currentOfferPrice ||
       currentOfferEndsAt < new Date().getTime()
     ) {
-      logMessage({
-        message: "Setting new highest offer on DB",
-        currentOffer,
-        collection,
-        tokenId,
-        wasPolledSpecifically: isHighestOffer,
-        price,
-        level: "debug",
-      });
       isHighestOffer = true;
       await dbClient.setOffer({
         collection,

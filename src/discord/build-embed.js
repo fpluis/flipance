@@ -678,7 +678,6 @@ export default async (args) => {
       });
   }
 
-  logMessage({ message: "Embed fields", fields: embed.fields });
 
   if (transactionHash) {
     embed.fields.push({
