@@ -11,13 +11,16 @@ import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const LR_COLLECTION_BID_STRATEGY_ADDRESS =
-  "0x86f909f70813cdb1bc733f4d97dc6b03b8e7e8f3";
-const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
-  "0x56244bb70cbd3ea9dc8007399f61dfc065190031";
-
 const { ETHEREUM_NETWORK = "homestead", LOOKSRARE_API_KEY } = process.env;
 
+const LR_COLLECTION_BID_STRATEGY_ADDRESS =
+  ETHEREUM_NETWORK === "homestead"
+    ? "0x86f909f70813cdb1bc733f4d97dc6b03b8e7e8f3"
+    : "0xa6e7decd4e18b510c6b98aa0c8ee2db3879f529d";
+const LR_COLLECTION_STANDARD_SALE_FIXED_PRICE =
+  ETHEREUM_NETWORK === "homestead"
+    ? "0x56244bb70cbd3ea9dc8007399f61dfc065190031"
+    : "0x732319A3590E4fA838C111826f9584a9A2fDEa1a";
 const looksRareAPI =
   ETHEREUM_NETWORK === "homestead"
     ? `https://api.looksrare.org`
