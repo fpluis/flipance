@@ -90,6 +90,7 @@ const pollNFTEvents = async ({
         message: "Some watchers were filtered",
         event,
         watchers,
+        myWatchers,
         totalShards,
         shardId,
         level: "debug",

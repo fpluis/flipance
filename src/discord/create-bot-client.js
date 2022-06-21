@@ -9,7 +9,7 @@ import minimist from "minimist";
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
 
-const MAX_MINUTE_DIFFERENCE = 20;
+const MAX_MINUTE_DIFFERENCE = 10;
 
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
@@ -99,6 +99,14 @@ const isAllowedByPreferences = ({
 
   if (eventType === "offer") {
     if (!isHighestOffer || (alertType === "server" && tokenId != null)) {
+      logMessage({
+        message: `Filtered offer event`,
+        isHighestOffer,
+        alertType,
+        tokenId,
+        event,
+        level: "debug",
+      });
       return false;
     }
 

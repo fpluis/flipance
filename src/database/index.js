@@ -1724,7 +1724,6 @@ export const createDbClient = async ({
       floorDifference,
       orderType,
     } = nftEvent;
-
     // At least one id is necessary to associate an alert to a user
     if (
       (transactionHash == null && orderHash == null) ||
