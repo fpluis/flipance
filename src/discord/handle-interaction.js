@@ -108,7 +108,7 @@ const handleCollectionAlert = async ({
   }
 
   // The token id for collection alert is set to an empty string.
-  const tokens = [`${address}/`];
+  const tokens = [`${address.toLowerCase()}/`];
   const { result } = await dbClient.createAlert({
     userId: user.id,
     discordId,
@@ -219,7 +219,7 @@ const handleServerAlert = async ({ dbClient, interaction }) => {
   }
 
   // The token for collection alert is set to an empty string.
-  const tokens = [`${address}/`];
+  const tokens = [`${address.toLowerCase()}/`];
   const { result } = await dbClient.createAlert({
     userId: user.id,
     discordId,
@@ -283,7 +283,7 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   if (userAlerts.length === 0 && guildAlerts.length === 0) {
     return interaction.editReply({
       content:
-        "You haven't set up any alerts yet. To create a wallet alert, use the /walletalert command with the wallet address you want to watch. To create a collection alert, use the /collectionalert with the with the collection address you want to watch.",
+        "You haven't set up any wallet nor collection alerts yet. To create a wallet alert, use the /walletalert command with the wallet address you want to watch. To create a collection alert, use the /collectionalert with the with the collection address you want to watch.",
       ephemeral: true,
     });
   }
@@ -306,7 +306,7 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   );
   let content;
   if (userAlerts.length === 0) {
-    content = `You have not set up any wallet alerts. These are the server's alerts:${collectionAlertList}.`;
+    content = `You haven't set up any wallet alerts.\n\n These are the server's alerts:${collectionAlertList}.`;
   } else if (guildAlerts.length === 0) {
     content = `These are your personal alerts:${personalAlertList}.\n\nThere are no server alerts.`;
   } else {
@@ -608,14 +608,14 @@ const getSettings = async (dbClient, interaction) => {
     user: { id: discordId },
   } = interaction;
   const alert = interaction.options.getString("alert");
-  const address = isValidAddress(alert) ? alert : null;
+  const address = isValidAddress(alert) ? alert.toLowerCase() : null;
   const nickname = isValidNickname(alert) ? alert : null;
   if (address != null) {
     const { result, objects: alerts } = await dbClient
       .getUserAlerts({ discordId })
       .then(({ result, objects }) => {
         const alertByAddress = objects.find(
-          ({ address: address1 }) => address1 === address
+          ({ address: address1 }) => address1 === address.toLowerCase()
         );
         // If the user doesn't have the alert, query server alerts
         if (result === "success" && alertByAddress == null) {
@@ -628,7 +628,9 @@ const getSettings = async (dbClient, interaction) => {
       });
     return {
       result,
-      object: alerts.find(({ address: address1 }) => address1 === address),
+      object: alerts.find(
+        ({ address: address1 }) => address1 === address.toLowerCase()
+      ),
     };
   }
 
