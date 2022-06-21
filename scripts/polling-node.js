@@ -135,7 +135,11 @@ const monitorBlockchainEvents = async ({
       tokenId,
       endsAt,
       hash: orderHash,
+      // Offers polled from specific collections are always the current
+      // highest offer.
+      isHighestOffer: offerMustBeHighest = false,
     } = event;
+    let isHighestOffer = offerMustBeHighest;
     const { object: currentOffer } = await dbClient.getOffer({
       collection,
       tokenId,
@@ -145,8 +149,8 @@ const monitorBlockchainEvents = async ({
       endsAt: currentOfferEndsAt = new Date("1970-01-01"),
       price: currentOfferPrice = 0,
     } = currentOffer || {};
-    let isHighestOffer = false;
     if (
+      isHighestOffer ||
       price > currentOfferPrice ||
       currentOfferEndsAt < new Date().getTime()
     ) {
@@ -260,7 +264,11 @@ const start = async () => {
 start();
 
 process.on("unhandledRejection", (error) => {
-  logMessage({ message: `Unhandled promise rejection`, level: "error", error });
+  logMessage({
+    message: `Unhandled promise rejection`,
+    level: "error",
+    error,
+  });
   process.exit(-1);
 });
 
