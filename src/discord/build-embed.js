@@ -1,4 +1,5 @@
-import { dirname, join } from "path";
+import dotenv from "dotenv";
+import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { MessageAttachment } from "discord.js";
 import sharp from "sharp";
@@ -7,7 +8,16 @@ import logMessage from "../log-message.js";
 import getMetadata from "../get-metadata.js";
 import resolveURI from "../resolve-uri.js";
 
+dotenv.config({ path: resolve(".env") });
+
+const { ETHEREUM_NETWORK } = process.env;
+
 const gemV2Address = "0x83c8f28c26bf6aaca652df1dbbe0e1b56f8baba2";
+
+const looksRareBaseDomain =
+  ETHEREUM_NETWORK === "homestead"
+    ? "https://looksrare.org"
+    : "https://rinkeby.looksrare.org";
 
 /* Turns a long hex string like "0x123456789123456" into "0x12...3456" */
 const makeAddressReadable = (address) =>
@@ -17,7 +27,7 @@ const makeAddressReadable = (address) =>
 const marketplaceIdToMdLink = (marketplace) => {
   switch (marketplace) {
     case "looksRare":
-      return "[LooksRare](https://looksrare.org/)";
+      return `[LooksRare](${looksRareBaseDomain}/)`;
     case "rarible":
       return "[Rarible](https://rarible.com/)";
     case "foundation":
@@ -33,13 +43,13 @@ const marketplaceIdToMdLink = (marketplace) => {
 /* Generate the item's URL on the marketplace where the event comes from */
 const generateTokenMarketplaceURL = (marketplaceId, collection, tokenId) => {
   if (tokenId == null) {
-    return `https://looksrare.org/collections/${collection}`;
+    return `${looksRareBaseDomain}/collections/${collection}`;
   }
 
   switch (marketplaceId) {
     case "looksRare":
     case "foundation":
-      return `https://looksrare.org/collections/${collection}/${tokenId}`;
+      return `${looksRareBaseDomain}/collections/${collection}/${tokenId}`;
     case "rarible":
       return `https://rarible.com/token/${collection}:${tokenId}`;
     case "x2y2":
@@ -58,8 +68,15 @@ const roundDecimals = (number, decimals = 6) =>
       10 ** decimals
   ).toLocaleString("en-US");
 
-const describePrice = ({ price, floorDifference, collectionFloor }) => {
-  const priceString = `${roundDecimals(price)} ETH`;
+const describePrice = ({
+  eventType,
+  price,
+  floorDifference,
+  collectionFloor,
+}) => {
+  const priceString = `${roundDecimals(price)} ${
+    eventType === "acceptOffer" ? "WETH" : "ETH"
+  }`;
   return collectionFloor == null
     ? `${priceString}`
     : floorDifference === 0
@@ -545,7 +562,7 @@ export default async (args) => {
 
   const collectionMetadata = await getCollectionMetadata(collection);
   const marketplace = marketplaceIdToMdLink(marketplaceId);
-  const collectionUrl = `https://looksrare.org/collections/${collection}`;
+  const collectionUrl = `${looksRareBaseDomain}/collections/${collection}`;
   const embed = {
     color: 0x0099ff,
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
@@ -571,7 +588,6 @@ export default async (args) => {
       {
         name: "Alert",
         value: nickname || makeAddressReadable(alertAddress),
-        inline: true,
       },
     ]);
   }
@@ -580,14 +596,15 @@ export default async (args) => {
     embed.fields.push([
       {
         name: "Collection",
-        value: `[${collectionMetadata.name}](https://looksrare.org/collections/${collection})`,
+        value: `[${collectionMetadata.name}](${looksRareBaseDomain}/collections/${collection})`,
+        inline: true,
       },
     ]);
   } else {
     embed.fields.push([
       {
         name: "Collection",
-        value: `[${collection}](https://looksrare.org/collections/${collection})`,
+        value: `[${collection}](${looksRareBaseDomain}/collections/${collection})`,
         inline: true,
       },
     ]);
@@ -603,12 +620,20 @@ export default async (args) => {
     ]);
   }
 
+  if (eventType === "offer" && endsAt != null) {
+    embed.fields.push({
+      name: "Valid until",
+      value: new Date(endsAt).toUTCString(),
+    });
+  }
+
   if (buyerAddress) {
     embed.fields.push({
       name: "Buyer",
       value: `[${makeAddressReadable(
         buyerAddress
-      )}](https://looksrare.org/accounts/${buyerAddress})`,
+      )}](${looksRareBaseDomain}/accounts/${buyerAddress})`,
+      inline: true,
     });
   }
 
@@ -617,15 +642,8 @@ export default async (args) => {
       name: "Seller",
       value: `[${makeAddressReadable(
         sellerAddress
-      )}](https://looksrare.org/accounts/${sellerAddress})`,
-      inline: true,
-    });
-  }
-
-  if (eventType === "offer" && endsAt != null) {
-    embed.fields.push({
-      name: "Valid until",
-      value: new Date(endsAt).toUTCString(),
+      )}](${looksRareBaseDomain}/accounts/${sellerAddress})`,
+      inline: buyerAddress != null,
     });
   }
 
@@ -641,23 +659,26 @@ export default async (args) => {
   }
 
   if (metadata.attributes && Array.isArray(metadata.attributes)) {
-    metadata.attributes.forEach(({ trait_type, value }) => {
-      if (
-        trait_type != null &&
-        trait_type !== "" &&
-        trait_type.length > 0 &&
-        value != null &&
-        value !== "" &&
-        value.length > 0
-      ) {
+    metadata.attributes
+      .filter(
+        ({ trait_type, value }) =>
+          trait_type != null &&
+          trait_type !== "" &&
+          trait_type.length > 0 &&
+          value != null &&
+          value !== "" &&
+          value.length > 0
+      )
+      .forEach(({ trait_type, value }) => {
         embed.fields.push({
           name: trait_type,
           value: `${value}`,
-          inline: true,
+          inline: false,
         });
-      }
-    });
+      });
   }
+
+  logMessage({ message: "Embed fields", fields: embed.fields });
 
   if (transactionHash) {
     embed.fields.push({
