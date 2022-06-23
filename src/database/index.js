@@ -1816,7 +1816,7 @@ export const createDbClient = async ({
             "nft_events_hash_event_type_collection_token_id_key",
             "unique_hash_timestamp",
             "nft_events_hash_starts_at_key",
-            "order_hash_starts_at",
+            "order_hash_marketplace",
             "transaction_hash_event_type_collection_token_id",
           ].includes(constraint)
         ) {
