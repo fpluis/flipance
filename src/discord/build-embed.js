@@ -117,7 +117,6 @@ const describeOffer = ({
   marketplace,
   watcher,
   initiator,
-  target,
   marketplaceId,
 }) => {
   const subject =
@@ -129,12 +128,12 @@ const describeOffer = ({
   let offerDescription;
   if (tokenId == null) {
     offerDescription = `collection offer for all ${collectionDescription} NFTs`;
-    if (watcher.address !== initiator && target === "user") {
+    if (watcher.address !== initiator && watcher.type === "wallet") {
       offerDescription = `${offerDescription} (${subjectDescription} owns some)`;
     }
   } else {
     offerDescription = `single offer for ${collectionDescription} #${tokenId}`;
-    if (watcher.address !== initiator && target === "user") {
+    if (watcher.address !== initiator && watcher.type === "wallet") {
       offerDescription = `${offerDescription} (${subjectDescription} currently owns it)`;
     }
   }
@@ -390,7 +389,6 @@ const describeAuctionBid = ({
   marketplace,
   watcher,
   initiator,
-  target,
 }) => {
   const subject =
     watcher.address === initiator
@@ -400,7 +398,7 @@ const describeAuctionBid = ({
         )}](https://etherscan.io/address/${buyer})`;
 
   let bidDescription = `bid for ${collectionDescription} #${tokenId}`;
-  if (watcher.address !== initiator && target === "user") {
+  if (watcher.address !== initiator && watcher.type === "wallet") {
     bidDescription = `${bidDescription} (${subjectDescription} currently owns it)`;
   }
 
@@ -677,7 +675,6 @@ export default async (args) => {
         });
       });
   }
-
 
   if (transactionHash) {
     embed.fields.push({
