@@ -196,7 +196,7 @@ const createTableQueries = [
     blockchain SMALLINT NOT NULL,\
     marketplace SMALLINT,\
     UNIQUE (transaction_hash, event_type, collection, token_id),\
-    UNIQUE (order_hash, starts_at),\
+    UNIQUE (order_hash, marketplace),\
     collection CHAR(42),\
     initiator CHAR(42),\
     buyer CHAR(42),\
@@ -219,9 +219,12 @@ const patchDBQueries = [
   `ALTER TABLE nft_events RENAME COLUMN hash TO transaction_hash;`,
   `ALTER TABLE nft_events ALTER transaction_hash DROP NOT NULL`,
   `ALTER TABLE nft_events ADD order_hash TEXT;`,
-  `ALTER TABLE nft_events DROP CONSTRAINT nft_events_hash_event_type_collection_token_id_key;`,
-  `ALTER TABLE nft_events ADD CONSTRAINT transaction_hash_event_type_collection_token_id UNIQUE (transaction_hash, event_type, collection, token_id);`,
-  `ALTER TABLE nft_events ADD CONSTRAINT order_hash_starts_at UNIQUE (order_hash, starts_at);`,
+  `DELETE FROM nft_events events_1
+    USING nft_events events_2
+   WHERE   events_1.id < events_2.id
+    AND events_1.order_hash = events_2.order_hash;`,
+  `ALTER TABLE nft_events DROP CONSTRAINT order_hash_starts_at;`,
+  `ALTER TABLE nft_events ADD CONSTRAINT order_hash_marketplace UNIQUE (order_hash, marketplace);`,
 ];
 
 /**
