@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import EventEmitter from "events";
 import {
   getCollectionFloor,
-  getCollectionOffers,
+  getHighestOffers,
   getEvents,
 } from "../looksrare-api/index.js";
 // eslint-disable-next-line no-unused-vars
@@ -600,10 +600,11 @@ export default (ethProvider, collections = []) => {
       const event = args[args.length - 1];
       const {
         transactionHash,
-        args: { maker: buyer, taker: seller, price, amount },
+        args: { orderHash, maker: buyer, taker: seller, price, amount },
       } = event;
       const parsedEvent = await parseEvent(event);
       emit("acceptOffer", {
+        orderHash,
         marketplace,
         seller,
         buyer,
@@ -618,10 +619,11 @@ export default (ethProvider, collections = []) => {
       const event = args[args.length - 1];
       const {
         transactionHash,
-        args: { maker: seller, taker: buyer, price, amount },
+        args: { orderHash, maker: seller, taker: buyer, price, amount },
       } = event;
       const parsedEvent = await parseEvent(event);
       emit("acceptAsk", {
+        orderHash,
         marketplace,
         seller,
         buyer,
@@ -916,6 +918,7 @@ export default (ethProvider, collections = []) => {
             price,
             endTime: endsAt,
             startTime: startsAt,
+            hash: orderHash,
             signer,
             tokenId,
           } = listing;
@@ -931,6 +934,7 @@ export default (ethProvider, collections = []) => {
             });
           emit("listing", {
             ...listing,
+            orderHash,
             isNewFloor: true,
             price: Number(etherUtils.formatEther(price)),
             seller: signer,
@@ -962,9 +966,16 @@ export default (ethProvider, collections = []) => {
       }
 
       offers.forEach((offer) => {
-        const { price, endTime: endsAt, startTime: startsAt, signer } = offer;
+        const {
+          price,
+          endTime: endsAt,
+          startTime: startsAt,
+          signer,
+          hash: orderHash,
+        } = offer;
         emit("offer", {
           ...offer,
+          orderHash,
           isHighestOffer: true,
           price: Number(etherUtils.formatEther(price)),
           buyer: signer,
@@ -978,12 +989,7 @@ export default (ethProvider, collections = []) => {
       });
     };
 
-    return pollLRAPI(
-      collections,
-      getCollectionOffers,
-      handleResponse,
-      "offers"
-    );
+    return pollLRAPI(collections, getHighestOffers, handleResponse, "offers");
   };
 
   const pollLROrders = async () => {
@@ -1034,6 +1040,7 @@ export default (ethProvider, collections = []) => {
       signer,
       collectionAddress: collection,
       status,
+      hash: orderHash,
     } = order;
     const endsAt = new Date(endTime * 1000);
     const eventType = mapLREventType(type);
@@ -1047,6 +1054,7 @@ export default (ethProvider, collections = []) => {
     if (eventType != null) {
       const eventProps = {
         ...order,
+        orderHash,
         initiator: from,
         price: Number(etherUtils.formatEther(price)),
         startsAt: new Date(createdAt),
@@ -1074,12 +1082,14 @@ export default (ethProvider, collections = []) => {
         eventProps.orderType = "listing";
         eventProps.transactionHash = hash;
         emit("cancelOrder", eventProps);
+        return;
       }
 
       if (eventType === "cancelOffer") {
         eventProps.orderType = "offer";
         eventProps.transactionHash = hash;
         emit("cancelOrder", eventProps);
+        return;
       }
 
       emit(eventType, eventProps);

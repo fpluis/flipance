@@ -31,6 +31,17 @@ const {
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
 
+const hasAffectedToken = (collection, tokenId, tokens) => {
+  if (tokenId == null) {
+    return tokens.some((token) => {
+      const [alertCollection] = token.split("/");
+      return collection === alertCollection;
+    });
+  }
+
+  return tokens.includes(`${collection}/${tokenId}`);
+};
+
 /**
  * Determine whether a user/server should be notified of an NFT event
  * based on their preferences
@@ -58,10 +69,12 @@ const isAllowedByPreferences = ({
     maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
     address: watcherAddress,
     type: alertType,
+    tokens: alertTokens = [],
   } = {},
   maxEventAge,
 }) => {
   const {
+    collection,
     marketplace,
     eventType,
     floorDifference,
@@ -79,7 +92,8 @@ const isAllowedByPreferences = ({
     !allowedMarketplaces.includes(marketplace) ||
     !allowedEvents.includes(eventType) ||
     (alertType === "wallet" &&
-      ![buyer, seller, initiator].includes(watcherAddress))
+      ![buyer, seller, initiator].includes(watcherAddress) &&
+      !hasAffectedToken(collection, tokenId, alertTokens))
   ) {
     logMessage({
       message: `Filtered "${eventType}" event`,
@@ -90,22 +104,24 @@ const isAllowedByPreferences = ({
       notAllowedEvent: !allowedEvents.includes(eventType),
       notForMe:
         alertType === "wallet" &&
-        ![buyer, seller, initiator].includes(watcherAddress),
+        ![buyer, seller, initiator].includes(watcherAddress) &&
+        !hasAffectedToken(collection, tokenId, alertTokens),
       event,
-      level: "debug",
+      level: "warning",
     });
+
     return false;
   }
 
   if (eventType === "offer") {
-    if (!isHighestOffer || (alertType === "server" && tokenId != null)) {
+    if (!isHighestOffer) {
       logMessage({
         message: `Filtered offer event`,
         isHighestOffer,
         alertType,
         tokenId,
         event,
-        level: "debug",
+        level: "warning",
       });
       return false;
     }
@@ -158,11 +174,14 @@ export default ({ dbClient, shardId, totalShards }) => {
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
-          logMessage({
-            message: `Notifying watcher of ${event.eventType}`,
-            watcher,
-            level: "debug",
-          });
+          // if (event.eventType === "offer" && watcher.type === "wallet") {
+          //   logMessage({
+          //     message: `Notifying watcher of ${event.eventType}`,
+          //     watcher,
+          //     level: "debug",
+          //   });
+          // }
+
           const embed = await buildEmbed({
             ...event,
             watcher,

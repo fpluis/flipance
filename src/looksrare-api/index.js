@@ -82,10 +82,19 @@ const callLRWithRetries = (endpoint = "", retries = 3) => {
  * @param tokenId
  * @return {Array[LooksRareOrder]} offers - The result of the call.
  */
-export const getCollectionOffers = ({ collection, first = 1 }) =>
-  callLRWithRetries(
-    `${looksRareAPI}/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`
-  );
+export const getHighestOffers = ({ collection, tokenId, first = 1 }) => {
+  let endpoint = `${looksRareAPI}/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`;
+  if (tokenId) {
+    logMessage({
+      message: `Get highest offers for tokenId ${tokenId}`,
+      collection,
+      tokenId,
+    });
+    endpoint = `${endpoint}&tokenId=${tokenId}`;
+  }
+
+  return callLRWithRetries(endpoint);
+};
 
 /**
  * Get a collection's floor order on LooksRare. See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.

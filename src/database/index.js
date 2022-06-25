@@ -168,7 +168,8 @@ const createTableQueries = [
     created_at TIMESTAMPTZ NOT NULL,\
     ends_at TIMESTAMPTZ NOT NULL,\
     marketplace VARCHAR(16),\
-    price DOUBLE PRECISION NOT NULL\
+    price DOUBLE PRECISION NOT NULL,\
+    order_hash TEXT
   );`,
   `CREATE TABLE IF NOT EXISTS floor_prices (\
     collection CHAR(42) NOT NULL,\
@@ -176,7 +177,8 @@ const createTableQueries = [
     ends_at TIMESTAMPTZ NOT NULL,\
     PRIMARY KEY (collection, created_at),\
     marketplace VARCHAR(16),\
-    price DOUBLE PRECISION NOT NULL\
+    price DOUBLE PRECISION NOT NULL,\
+    order_hash TEXT
   );`,
   `CREATE TABLE IF NOT EXISTS sharding_info (\
     shard_id SMALLINT NOT NULL,\
@@ -224,7 +226,10 @@ const patchDBQueries = [
    WHERE   events_1.id < events_2.id
     AND events_1.order_hash = events_2.order_hash;`,
   `ALTER TABLE nft_events DROP CONSTRAINT order_hash_starts_at;`,
-  `ALTER TABLE nft_events ADD CONSTRAINT order_hash_marketplace UNIQUE (order_hash, marketplace);`,
+  `ALTER TABLE nft_events DROP CONSTRAINT order_hash_marketplace;`,
+  `ALTER TABLE nft_events ADD CONSTRAINT order_hash_marketplace_event_type UNIQUE (order_hash, marketplace, event_type);`,
+  `ALTER TABLE offers ADD order_hash TEXT;`,
+  `ALTER TABLE floor_prices ADD order_hash TEXT;`,
 ];
 
 /**
@@ -609,6 +614,7 @@ const toAlertObject = (alert) => {
  * @property {Date} createdAt - The Date when the offer was made in that marketplace.
  * @property {Date} endsAt - The Date when the offer expires.
  * @property {Marketplace} marketplace - The id of the marketplace where this offer was made.
+ * @property {String} orderHash - The hash of the offer order on that marketplace.
  * @property {Number} price - The offer's price in Ethereum.
  * @return {Offer}
  */
@@ -621,11 +627,13 @@ const toOfferObject = (offer) => {
     token_id: tokenId,
     ends_at: endsAt,
     created_at: createdAt,
+    order_hash: orderHash,
     marketplace,
     ...props
   } = offer;
   return {
     ...props,
+    orderHash,
     marketplace: deserializeMarketplace(marketplace),
     tokenId,
     endsAt,
@@ -642,6 +650,7 @@ const toOfferObject = (offer) => {
  * @property {Date} createdAt - The Date when the floor price was detected.
  * Will be different from the time when the floor listing was made.
  * @property {Marketplace} marketplace - The id of the marketplace where this floor was detected.
+ * @property {String} orderHash - The hash of the listing order on that marketplace.
  * @property {Number} price - The floor's price in Ethereum.
  * @return {CollectionFloor}
  */
@@ -653,11 +662,13 @@ const toCollectionFloorObject = (collectionFloor) => {
   const {
     created_at: createdAt,
     ends_at: endsAt,
+    order_hash: orderHash,
     marketplace,
     ...props
   } = collectionFloor;
   return {
     ...props,
+    orderHash,
     marketplace: deserializeMarketplace(marketplace),
     endsAt,
     createdAt,
@@ -1539,6 +1550,7 @@ export const createDbClient = async ({
    */
   const setOffer = ({
     collection,
+    orderHash,
     price,
     endsAt,
     marketplace = "looksRare",
@@ -1550,6 +1562,7 @@ export const createDbClient = async ({
 
     const values = [
       collection.toLowerCase(),
+      orderHash ? orderHash.toLowerCase() : null,
       price,
       new Date(endsAt),
       new Date(),
@@ -1558,11 +1571,11 @@ export const createDbClient = async ({
     ];
     return client
       .query(
-        `INSERT INTO offers (collection, price, ends_at, created_at, marketplace, token_id)\
-      VALUES($1, $2, $3, $4, $5, $6)\
+        `INSERT INTO offers (collection, order_hash, price, ends_at, created_at, marketplace, token_id)\
+      VALUES($1, $2, $3, $4, $5, $6, $7)\
       ON CONFLICT (collection, token_id)\
       DO\
-        UPDATE SET collection = $1, price = $2, ends_at = $3, created_at = $4, marketplace = $5, token_id = $6\
+        UPDATE SET collection = $1, order_hash = $2, price = $3, ends_at = $4, created_at = $5, marketplace = $6, token_id = $7\
       RETURNING *`,
         values
       )
@@ -1575,17 +1588,19 @@ export const createDbClient = async ({
       .catch((error) => {
         const { constraint } = error;
         if (constraint !== "offers_pkey") {
+          const { stack } = new Error();
           logMessage({
-            message: `Error setting collection offer with args ${JSON.stringify(
-              {
-                collection,
-                price,
-                endsAt,
-                marketplace,
-              }
-            )}`,
+            message: `Error setting collection offer with args`,
+            args: JSON.stringify({
+              collection,
+              price,
+              endsAt,
+              marketplace,
+              orderHash,
+            }),
             level: "error",
             error,
+            stack,
           });
         }
 
@@ -1643,6 +1658,7 @@ export const createDbClient = async ({
    */
   const setCollectionFloor = ({
     collection,
+    orderHash,
     price,
     endsAt,
     marketplace = "looksRare",
@@ -1653,9 +1669,10 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `INSERT INTO floor_prices (collection, created_at, price, marketplace, ends_at) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        `INSERT INTO floor_prices (collection, order_hash, created_at, price, marketplace, ends_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
         [
           collection.toLowerCase(),
+          orderHash ? orderHash.toLowerCase() : null,
           new Date(),
           price,
           serializeMarketplace(marketplace),
@@ -1816,7 +1833,7 @@ export const createDbClient = async ({
             "nft_events_hash_event_type_collection_token_id_key",
             "unique_hash_timestamp",
             "nft_events_hash_starts_at_key",
-            "order_hash_marketplace",
+            "order_hash_marketplace_event_type",
             "transaction_hash_event_type_collection_token_id",
           ].includes(constraint)
         ) {
@@ -1891,7 +1908,7 @@ export const createDbClient = async ({
       return { result: "missing-arguments", objects: [] };
     }
 
-    const buildWatcherObjectQuery = `json_build_object('alert_id', alerts.id, 'address', alerts.address, 'nickname', alerts.nickname, 'discord_id', users.discord_id, 'channel_id', alerts.channel_id, 'type', alerts.type, 'alert_max_offer_floor_difference', alert_settings.max_offer_floor_difference, 'alert_allowed_marketplaces', alert_settings.allowed_marketplaces, 'alert_allowed_events', alert_settings.allowed_events, 'user_max_offer_floor_difference', user_settings.max_offer_floor_difference, 'user_allowed_marketplaces', user_settings.allowed_marketplaces, 'user_allowed_events', user_settings.allowed_events)`;
+    const buildWatcherObjectQuery = `json_build_object('alert_id', alerts.id, 'address', alerts.address, 'nickname', alerts.nickname, 'discord_id', users.discord_id, 'channel_id', alerts.channel_id, 'type', alerts.type, 'tokens', alerts.tokens, 'alert_max_offer_floor_difference', alert_settings.max_offer_floor_difference, 'alert_allowed_marketplaces', alert_settings.allowed_marketplaces, 'alert_allowed_events', alert_settings.allowed_events, 'user_max_offer_floor_difference', user_settings.max_offer_floor_difference, 'user_allowed_marketplaces', user_settings.allowed_marketplaces, 'user_allowed_events', user_settings.allowed_events)`;
     return client
       .query(
         `SELECT nft_events.*, COALESCE(alerts.watchers, '[]') AS watchers\

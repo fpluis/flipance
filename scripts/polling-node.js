@@ -15,8 +15,12 @@ import {
 } from "../src/blockchain/index.js";
 import logMessage from "../src/log-message.js";
 import { createDbClient } from "../src/database/index.js";
-import { getDefaultProvider } from "ethers";
+import { getDefaultProvider, utils as etherUtils } from "ethers";
 import sleep from "../src/sleep.js";
+import {
+  getCollectionFloor,
+  getHighestOffers,
+} from "../src/looksrare-api/index.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -134,7 +138,7 @@ const monitorBlockchainEvents = async ({
       price,
       tokenId,
       endsAt,
-      hash: orderHash,
+      orderHash,
       // Offers polled from specific collections are always the current
       // highest offer.
       isHighestOffer: offerMustBeHighest = false,
@@ -157,6 +161,7 @@ const monitorBlockchainEvents = async ({
       isHighestOffer = true;
       await dbClient.setOffer({
         collection,
+        orderHash,
         price,
         endsAt,
         marketplace,
@@ -188,7 +193,7 @@ const monitorBlockchainEvents = async ({
       marketplace,
       price,
       endsAt,
-      hash: orderHash,
+      orderHash,
       isNewFloor = false,
     } = event;
     if (
@@ -199,6 +204,7 @@ const monitorBlockchainEvents = async ({
     ) {
       await dbClient.setCollectionFloor({
         collection,
+        orderHash,
         price,
         endsAt,
         marketplace,
@@ -213,23 +219,73 @@ const monitorBlockchainEvents = async ({
     });
   };
 
-  const handleNFTEvent = async (event) => {
-    const { eventType, collection, price } = event;
-    if (eventType === "cancelOrder") {
-      return dbClient.addNFTEvent(event);
+  const updateFloor = async ({ collection, marketplace }) => {
+    const newFloorListings = await getCollectionFloor({ collection });
+    if (newFloorListings.length > 0) {
+      const [{ price, endTime: endsAt, hash: newFloorHash }] = newFloorListings;
+      await dbClient.setCollectionFloor({
+        collection,
+        orderHash: newFloorHash,
+        price: Number(etherUtils.formatEther(price)),
+        endsAt: new Date(endsAt * 1000),
+        // This should be updated when offers/listings
+        // are pulled from other marketplaces
+        marketplace,
+      });
+      // If there are no listings, set the floor to 0
+    } else {
+      await dbClient.setCollectionFloor({
+        collection,
+        orderHash: null,
+        price: 0,
+        endsAt: new Date("1970-01-01"),
+        // This should be updated when offers/listings
+        // are pulled from other marketplaces
+        marketplace,
+      });
     }
+  };
 
-    const { object: floorObject } = await dbClient.getCollectionFloor({
+  const updateOffer = async ({ collection, tokenId, marketplace }) => {
+    const newOffers = await getHighestOffers({ collection, tokenId });
+    if (newOffers.length > 0) {
+      const [{ price, endTime: endsAt, hash: orderHash }] = newOffers;
+      await dbClient.setOffer({
+        collection,
+        tokenId,
+        orderHash,
+        price: Number(etherUtils.formatEther(price)),
+        endsAt: new Date(endsAt * 1000),
+        // This should be updated when offers/listings
+        // are pulled from other marketplaces
+        marketplace,
+      });
+      // If there are no offers, set the highest offer to 0
+    } else {
+      await dbClient.setOffer({
+        collection,
+        tokenId,
+        orderHash: null,
+        price: 0,
+        endsAt: new Date("1970-01-01"),
+        // This should be updated when offers/listings
+        // are pulled from other marketplaces
+        marketplace,
+      });
+    }
+  };
+
+  const handleAcceptOffer = async (
+    event,
+    { price: collectionFloor = 0 } = {}
+  ) => {
+    const { collection, marketplace, price, orderHash, tokenId } = event;
+    const { object: currentOffer } = await dbClient.getOffer({
       collection,
+      tokenId,
     });
-    const floor = floorObject || {};
-    const { price: collectionFloor = 0 } = floor;
-    if (eventType === "offer") {
-      return handleOffer(event, floor);
-    }
-
-    if (eventType === "listing") {
-      return handleListing(event, floor);
+    if (currentOffer != null && orderHash === currentOffer.orderHash) {
+      await updateOffer({ collection, tokenId, marketplace });
     }
 
     return dbClient.addNFTEvent({
@@ -237,6 +293,87 @@ const monitorBlockchainEvents = async ({
       collectionFloor,
       floorDifference: computeFloorDifference(price, collectionFloor),
     });
+  };
+
+  const handleAcceptAsk = async (
+    event,
+    { price: collectionFloor = 0, orderHash: floorHash } = {}
+  ) => {
+    const { collection, marketplace, price, orderHash } = event;
+    if (orderHash === floorHash) {
+      await updateFloor({
+        collection,
+        marketplace,
+      });
+    }
+
+    return dbClient.addNFTEvent({
+      ...event,
+      collectionFloor,
+      floorDifference: computeFloorDifference(price, collectionFloor),
+    });
+  };
+
+  const handleCancelOrder = async (event, currentFloor) => {
+    const { price: collectionFloor = 0, orderHash: floorHash } =
+      currentFloor || {};
+    const { collection, marketplace, price, orderHash, tokenId } = event;
+    if (orderHash === floorHash) {
+      await updateFloor({
+        collection,
+        marketplace,
+      });
+      return dbClient.addNFTEvent({
+        ...event,
+        collectionFloor,
+        floorDifference: computeFloorDifference(price, collectionFloor),
+      });
+    }
+
+    const { object: currentOffer } = await dbClient.getOffer({
+      collection,
+      tokenId,
+    });
+    if (currentOffer != null && orderHash === currentOffer.orderHash) {
+      await updateOffer({
+        collection,
+        tokenId,
+        marketplace,
+      });
+    }
+
+    return dbClient.addNFTEvent({
+      ...event,
+      collectionFloor,
+      floorDifference: computeFloorDifference(price, collectionFloor),
+    });
+  };
+
+  const handleNFTEvent = async (event) => {
+    const { eventType, collection, price } = event;
+    const { object: floorObject } = await dbClient.getCollectionFloor({
+      collection,
+    });
+    const floor = floorObject || {};
+    const { price: collectionFloor = 0 } = floor;
+    switch (eventType) {
+      case "offer":
+        return handleOffer(event, floor);
+      case "listing":
+        return handleListing(event, floor);
+      case "acceptOffer":
+        return handleAcceptOffer(event, floor);
+      case "acceptAsk":
+        return handleAcceptAsk(event, floor);
+      case "cancelOrder":
+        return handleCancelOrder(event, floor);
+      default:
+        return dbClient.addNFTEvent({
+          ...event,
+          collectionFloor,
+          floorDifference: computeFloorDifference(price, collectionFloor),
+        });
+    }
   };
 
   const pollAlertTokens = async () => {
