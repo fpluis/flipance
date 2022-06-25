@@ -166,8 +166,13 @@ const handleCollectionAlert = async ({
  * @param  {Object} params.dbClient - The initialized database client.
  * @return {void}
  */
-const handleServerAlert = async ({ dbClient, interaction }) => {
-  const { guildId: discordId, channelId, memberPermissions } = interaction;
+const handleServerAlert = async ({ dbClient, discordClient, interaction }) => {
+  const {
+    guildId: discordId,
+    user: { id: userDiscordId },
+    channelId,
+    memberPermissions,
+  } = interaction;
   await interaction.deferReply({
     content: "Creating your alert...",
     ephemeral: true,
@@ -196,8 +201,7 @@ const handleServerAlert = async ({ dbClient, interaction }) => {
   });
   if (currentAlerts.length >= user.alertLimit) {
     return interaction.editReply({
-      content:
-        "You can only have one collection alert per server. Please remove the current collection alert on this server to add a new one.",
+      content: `You can only have ${user.alertLimit} server alerts per server. Please remove a server alert on this server to add a new one.`,
       ephemeral: true,
     });
   }
@@ -234,10 +238,17 @@ const handleServerAlert = async ({ dbClient, interaction }) => {
     : "";
   switch (result) {
     case "success":
-      return interaction.editReply({
-        content: `Server alert successfully created for address ${address}${nicknameDescription}`,
-        ephemeral: true,
-      });
+      return discordClient.users.cache
+        .get(userDiscordId)
+        .send(
+          `Server notifications for "${address}"${nicknameDescription} enabled.`
+        )
+        .then(() => {
+          interaction.editReply({
+            content: `Server alert successfully created for address ${address}${nicknameDescription}`,
+            ephemeral: true,
+          });
+        });
     case "nickname-too-long":
       return interaction.editReply({
         content: `The nickname is too long. Please give the alert a nickname less than ${MAX_NICKNAME_LENGTH} characters long.`,
