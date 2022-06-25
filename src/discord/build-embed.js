@@ -74,8 +74,10 @@ const describePrice = ({
   floorDifference,
   collectionFloor,
 }) => {
-  const priceString = `${roundDecimals(price)} ${
-    eventType === "acceptOffer" ? "WETH" : "ETH"
+  const priceString = `${price} ${
+    ["offer", "acceptOffer", "settleAuction", "cancelOrder"].includes(eventType)
+      ? "WETH"
+      : "ETH"
   }`;
   return collectionFloor == null
     ? `${priceString}`
@@ -689,7 +691,9 @@ export default async (args) => {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
   const assetFolder = join(__dirname, "/../../assets");
-  if (eventType === "acceptOffer" || eventType === "settleAuction") {
+  if (
+    ["offer", "acceptOffer", "settleAuction", "cancelOrder"].includes(eventType)
+  ) {
     thumbnail = new MessageAttachment(`${assetFolder}/weth.png`, "weth.png");
   } else {
     thumbnail = new MessageAttachment(`${assetFolder}/eth.png`, "eth.png");
