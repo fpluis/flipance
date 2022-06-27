@@ -214,6 +214,11 @@ const createTableQueries = [
     floor_difference NUMERIC(12, 4),\
     price DOUBLE PRECISION\
   );`,
+  `CREATE TABLE IF NOT EXISTS db_flags (\
+    name TEXT,\
+    PRIMARY KEY (name),\
+    value BOOLEAN\
+  );`,
 ];
 
 const patchDBQueries = [
@@ -223,7 +228,7 @@ const patchDBQueries = [
   `ALTER TABLE nft_events ADD order_hash TEXT;`,
   `DELETE FROM nft_events events_1
     USING nft_events events_2
-   WHERE   events_1.id < events_2.id
+   WHERE events_1.id < events_2.id
     AND events_1.order_hash = events_2.order_hash;`,
   `ALTER TABLE nft_events DROP CONSTRAINT order_hash_starts_at;`,
   `ALTER TABLE nft_events DROP CONSTRAINT order_hash_marketplace;`,
@@ -279,6 +284,18 @@ const patchDB = async ({
     index += 1;
   }
 
+  const { rows: clearOrdersFlag } = await client.query(
+    `SELECT * FROM db_flags WHERE name = 'clear_orders'`
+  );
+  if (clearOrdersFlag.length === 0) {
+    await Promise.all([
+      client.query(`DELETE FROM floor_prices; DELETE FROM offers`),
+      client.query(
+        `INSERT INTO db_flags (name, value) VALUES ('clear_orders', TRUE)`
+      ),
+    ]);
+  }
+
   await client.release();
   return pool.end();
 };
@@ -322,19 +339,20 @@ export const setUpDb = async ({
       client.query(query).catch((error) => {
         logMessage({
           message: `Error handling query "${query}":`,
-          level: "warning",
+          level: "error",
           error,
         });
       })
     )
+  ).then(() =>
+    patchDB({
+      host,
+      port,
+      user,
+      password,
+      dbName,
+    })
   );
-  await patchDB({
-    host,
-    port,
-    user,
-    password,
-    dbName,
-  });
   await client.release();
   return pool.end();
 };
