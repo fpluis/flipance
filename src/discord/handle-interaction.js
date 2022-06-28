@@ -438,11 +438,12 @@ const handleDeleteAlertResponse = async ({
   result,
   address,
   nickname,
-  alert: { type } = {},
+  alert,
 }) => {
   const {
     user: { id: discordId },
   } = interaction;
+  const { type } = alert || {};
   const identifier =
     address == null
       ? `with nickname "${nickname}"`
