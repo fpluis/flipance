@@ -74,11 +74,15 @@ const describePrice = ({
   floorDifference,
   collectionFloor,
 }) => {
-  const priceString = `${price} ${
-    ["offer", "acceptOffer", "settleAuction", "cancelOrder"].includes(eventType)
-      ? "WETH"
-      : "ETH"
-  }`;
+  const coin = [
+    "offer",
+    "acceptOffer",
+    "settleAuction",
+    "cancelOrder",
+  ].includes(eventType)
+    ? "WETH"
+    : "ETH";
+  const priceString = `${price} ${coin}`;
   return collectionFloor == null
     ? `${priceString}`
     : floorDifference === 0
@@ -86,10 +90,10 @@ const describePrice = ({
     : floorDifference < 0
     ? `${priceString} (${roundDecimals(
         Math.abs(floorDifference) * 100
-      )}% below the current ${collectionFloor} ETH floor price)`
+      )}% below the current ${collectionFloor} ${coin} floor price)`
     : `${priceString} (${roundDecimals(
         floorDifference * 100
-      )}% above the current ${collectionFloor} ETH floor price)`;
+      )}% above the current ${collectionFloor} ${coin} floor price)`;
 };
 
 /**
