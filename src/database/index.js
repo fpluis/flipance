@@ -1015,6 +1015,9 @@ export const createDbClient = async ({
       });
   };
 
+  const alertSettingsSelectProps =
+    "alert_settings.max_offer_floor_difference as alert_max_offer_floor_difference, alert_settings.allowed_marketplaces as alert_allowed_marketplaces, alert_settings.allowed_events as alert_allowed_events, user_settings.max_offer_floor_difference as user_max_offer_floor_difference, user_settings.allowed_marketplaces as user_allowed_marketplaces, user_settings.allowed_events as user_allowed_events";
+
   /**
    *
    * Sets the nickname for an alert.
@@ -1031,7 +1034,18 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `UPDATE alerts SET nickname = $3 WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2 RETURNING *`,
+        `WITH alert_info AS (
+          UPDATE alerts a
+          SET nickname = $3
+          WHERE user_id = (SELECT id FROM users WHERE discord_id = $1) AND address = $2
+          RETURNING *
+        )
+        SELECT *, alert_info.id, ${alertSettingsSelectProps} FROM alert_info\
+        LEFT JOIN settings AS alert_settings\
+        ON alert_settings.id = alert_info.settings_id\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.discord_id = $1)`,
         [discordId, address.toLowerCase(), nickname]
       )
       .then(({ rows }) => {
@@ -1104,9 +1118,6 @@ export const createDbClient = async ({
         return { result: "error", object: null };
       });
   };
-
-  const alertSettingsSelectProps =
-    "alert_settings.max_offer_floor_difference as alert_max_offer_floor_difference, alert_settings.allowed_marketplaces as alert_allowed_marketplaces, alert_settings.allowed_events as alert_allowed_events, user_settings.max_offer_floor_difference as user_max_offer_floor_difference, user_settings.allowed_marketplaces as user_allowed_marketplaces, user_settings.allowed_events as user_allowed_events";
 
   /**
    *
