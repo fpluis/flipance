@@ -110,17 +110,29 @@ variable "GITHUB_TOKEN" {
   default     = ""
 }
 
+variable "LOOKSRARE_API_KEY" {
+  type        = string
+  description = "LooksRare API key that grants you a higher rate limit. See https://docs.looksrare.org/developers/public-api-documentation for more information."
+  sensitive   = true
+}
+
+variable "LOOKSRARE_RATE_LIMIT" {
+  type        = number
+  description = "Rate limit of your LooksRare API key, if you have one. See https://docs.looksrare.org/developers/public-api-documentation for more information."
+  default   = 120
+}
+
 variable "GITHUB_REPO_IDENTIFIER" {
   type = string
   description = "The Github username and repo name for the bot. Example: 'fpluis/flipance' is the identifier for the original repo."
   default = "fpluis/flipance"
 }
 
-variable "DB_HOSTNAME" {
-  type        = string
-  description = "Http host for the PostgreSQL database."
-  default     = "localhost"
-}
+# variable "DB_HOSTNAME" {
+#   type        = string
+#   description = "Http host for the PostgreSQL database."
+#   default     = "localhost"
+# }
 
 variable "DB_PORT" {
   type        = string
@@ -168,4 +180,34 @@ variable "DEFAULT_SERVER_ALERT_LIMIT" {
   type        = string
   description = "Default max number of alerts a server can have. Each server in the database has its own limit, and it can be changed for a specific server by querying the database."
   default     = 1
+}
+
+variable "ETHEREUM_NETWORK" {
+  type        = string
+  description = "What Ethereum network you want to use. You can set this variable to 'rinkeby' if you want to test the bot."
+  default     = "homestead"
+}
+
+variable "SHARD_ID" {
+  type        = number
+  description = "The id of the shard currently running. If you need to run multiple shards, you can do so in the same environment but you will have to start the individual process using 'export SHARD_ID=1&&npm run bot-shard' on Linux or 'set SHARD_ID=1&&npm run bot-shard' on Windows. For more information on sharding, go to https://discordjs.guide/sharding/#when-to-shard"
+  default     = 0
+}
+
+variable "TOTAL_SHARDS" {
+  type        = number
+  description = "Number of Discord shards the bot is running. For more information on sharding, go to https://discordjs.guide/sharding/#when-to-shard"
+  default     = 1
+}
+
+variable "BACKUP_LOGS" {
+  type        = bool
+  description = "Whether to backup logs to the /logs folder, organized by log level"
+  default     = true
+}
+
+variable "LOGGING_LEVELS" {
+  type        = string
+  description = "Logging levels to display on both the processes and (if chosen), logged to file"
+  default     = "info,error"
 }
