@@ -37,7 +37,6 @@
     "setup-deployment": "terraform init -backend-config=backend.conf",
     "deploy": "terraform apply -var-file=\"secret.tfvars\"",
     "pull-env": "node --experimental-vm-modules scripts/pull-env.js",
-    "rebuild-db": "node --experimental-vm-modules scripts/rebuild-db.js",
     "compose-local": "docker-compose -f docker-compose.yml -f docker-compose.override.yml up --build"
   }
 }
