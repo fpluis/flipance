@@ -13,6 +13,74 @@ provider "aws" {
   region = var.AWS_REGION
 }
 
+resource "aws_security_group" "db_instance" {
+  egress = [
+    {
+      cidr_blocks      = []
+      description      = ""
+      from_port        = 0
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      protocol         = "-1"
+      security_groups  = [aws_security_group.main.id]
+      self             = false
+      to_port          = 0
+    }
+  ]
+  ingress = [
+    {
+      cidr_blocks      = []
+      description      = ""
+      from_port        = 5432
+      ipv6_cidr_blocks = []
+      prefix_list_ids  = []
+      protocol         = "tcp"
+      security_groups  = [aws_security_group.main.id]
+      self             = false
+      to_port          = 5432
+    },
+  ]
+}
+
+module "db" {
+  source = "terraform-aws-modules/rds/aws"
+
+  identifier = "flipance-db"
+
+  engine            = "postgres"
+  engine_version    = "14.1"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+
+  db_name  = var.DB_NAME
+  username = var.POSTGRES_USERNAME
+  password = var.POSTGRES_PASSWORD
+  port     = var.DB_PORT
+
+  iam_database_authentication_enabled = true
+
+  vpc_security_group_ids = [aws_security_group.db_instance.id]
+
+  maintenance_window = "Mon:00:00-Mon:03:00"
+  backup_window      = "03:00-06:00"
+
+  monitoring_interval    = "30"
+  monitoring_role_name   = "FlipanceRDSMonitoringRole"
+  create_monitoring_role = true
+
+  tags = {
+    Owner       = "user"
+    Environment = "prod"
+  }
+
+  major_engine_version = "14"
+
+  family = "postgres14"
+
+  # Database Deletion Protection
+  deletion_protection = true
+}
+
 resource "tls_private_key" "discord_instance" {
   algorithm = "RSA"
   rsa_bits  = 4096
@@ -55,7 +123,7 @@ resource "aws_security_group" "main" {
       security_groups  = []
       self             = false
       to_port          = 22
-    }
+    },
   ]
 }
 
@@ -149,6 +217,12 @@ resource "aws_ssm_parameter" "NFT_SCAN_SECRET" {
   value = var.NFT_SCAN_SECRET
 }
 
+resource "aws_ssm_parameter" "LOOKSRARE_API_KEY" {
+  name  = "/prod/LOOKSRARE_API_KEY"
+  type  = "SecureString"
+  value = var.LOOKSRARE_API_KEY
+}
+
 resource "aws_ssm_parameter" "POSTGRES_PASSWORD" {
   name  = "/prod/POSTGRES_PASSWORD"
   type  = "SecureString"
@@ -175,16 +249,27 @@ data "template_file" "userdata" {
     MORALIS_MASTER_KEY_PARAM     = aws_ssm_parameter.MORALIS_MASTER_KEY.name
     NFT_SCAN_API_ID_PARAM        = aws_ssm_parameter.NFT_SCAN_API_ID.name
     NFT_SCAN_SECRET_PARAM        = aws_ssm_parameter.NFT_SCAN_SECRET.name
-    DB_HOSTNAME                  = var.DB_HOSTNAME
+    LOOKSRARE_API_KEY            = aws_ssm_parameter.LOOKSRARE_API_KEY.name
+    LOOKSRARE_RATE_LIMIT         = var.LOOKSRARE_RATE_LIMIT
+    DB_HOSTNAME                  = module.db.db_instance_address
     DB_PORT                      = var.DB_PORT
-    POSTGRES_USERNAME                  = var.POSTGRES_USERNAME
+    POSTGRES_USERNAME            = var.POSTGRES_USERNAME
     DB_NAME                      = var.DB_NAME
-    POSTGRES_PASSWORD                  = aws_ssm_parameter.POSTGRES_PASSWORD.name
+    POSTGRES_PASSWORD            = aws_ssm_parameter.POSTGRES_PASSWORD.name
     MAX_NICKNAME_LENGTH          = var.MAX_NICKNAME_LENGTH
     MAX_OFFER_FLOOR_DIFFERENCE   = var.MAX_OFFER_FLOOR_DIFFERENCE
     DEFAULT_USER_ALERT_LIMIT     = var.DEFAULT_USER_ALERT_LIMIT
     DEFAULT_SERVER_ALERT_LIMIT   = var.DEFAULT_SERVER_ALERT_LIMIT
+    ETHEREUM_NETWORK             = var.ETHEREUM_NETWORK
+    SHARD_ID                     = var.SHARD_ID
+    TOTAL_SHARDS                 = var.TOTAL_SHARDS
+    BACKUP_LOGS                  = var.BACKUP_LOGS
+    LOGGING_LEVELS               = var.LOGGING_LEVELS
   }
+
+  depends_on = [
+    module.db
+  ]
 }
 
 data "aws_caller_identity" "current" {}
