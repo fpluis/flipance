@@ -12,7 +12,7 @@ sudo apt update -y
 sudo apt upgrade -y
 curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
 
-sudo apt install awscli curl nodejs postgresql postgresql-contrib -y
+sudo apt install awscli nodejs postgresql postgresql-contrib -y
 echo "Tools installed"
 
 if [ ${REPO_IS_PUBLIC} ]; then
@@ -42,15 +42,23 @@ echo "MAX_NICKNAME_LENGTH=${MAX_NICKNAME_LENGTH}" | sudo tee -a /etc/environment
 echo "MAX_OFFER_FLOOR_DIFFERENCE=${MAX_OFFER_FLOOR_DIFFERENCE}" | sudo tee -a /etc/environment
 echo "DEFAULT_USER_ALERT_LIMIT=${DEFAULT_USER_ALERT_LIMIT}" | sudo tee -a /etc/environment
 echo "DEFAULT_SERVER_ALERT_LIMIT=${DEFAULT_SERVER_ALERT_LIMIT}" | sudo tee -a /etc/environment
+echo "LOOKSRARE_RATE_LIMIT=${LOOKSRARE_RATE_LIMIT}" | sudo tee -a /etc/environment
+echo "ETHEREUM_NETWORK=${ETHEREUM_NETWORK}" | sudo tee -a /etc/environment
+echo "SHARD_ID=${SHARD_ID}" | sudo tee -a /etc/environment
+echo "TOTAL_SHARDS=${TOTAL_SHARDS}" | sudo tee -a /etc/environment
+echo "BACKUP_LOGS=${BACKUP_LOGS}" | sudo tee -a /etc/environment
+echo "LOGGING_LEVELS=${LOGGING_LEVELS}" | sudo tee -a /etc/environment
 
 source /etc/environment
 
-sudo -u postgres psql -U postgres -d postgres -c "create user $POSTGRES_USERNAME with password '$POSTGRES_PASSWORD'; alter user $POSTGRES_USERNAME with createdb"
-sudo -u postgres createdb flipanceadmin
-sudo -u postgres npm run setup-db
+# sudo -u postgres psql -U postgres -d postgres -c "create user $POSTGRES_USERNAME with password '$POSTGRES_PASSWORD'; alter user $POSTGRES_USERNAME with createdb"
+# sudo -u postgres createdb flipanceadmin
+sudo npm run setup-db
+sudo npm run register-commands
 echo "DB set up"
 
 sudo npm install forever -g
 echo "Forever installed"
-sudo forever start scripts/start.js
+sudo forever start scripts/polling-node.js
+sudo forever start scripts/bot-shard.js
 echo "Process launched"
