@@ -13,12 +13,11 @@ import sleep from "../src/sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-// const argv = minimist(process.argv.slice(2));
-const { TOTAL_SHARDS, SHARD_ID, HOSTNAME } = process.env;
+const { TOTAL_SHARDS, SHARD_ID } = process.env;
 
 const [shardIdFromString] = SHARD_ID.match(/\d$/) || [];
-let shardId = shardIdFromString ? Number(shardIdFromString) : null;
-let totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : null;
+const shardId = shardIdFromString ? Number(shardIdFromString) : 0;
+const totalShards = TOTAL_SHARDS ? Number(TOTAL_SHARDS) : 1;
 logMessage({
   message: `Shard configuration: ${shardId + 1}/${totalShards}`,
   level: "info",
@@ -31,29 +30,6 @@ const DELAY_BETWEEN_POLLS = 20 * 1000;
 // After how many polls the Discord client should reset.
 // This is a preventive measure against silent disconnects.
 const POLLS_BETWEEN_RESETS = 1000;
-
-const POLL_SHARDING_INFO_DELAY = 30 * 1000;
-
-const shardingHappened = async (dbClient) => {
-  // Do not fetch sharding info from db if it is stored in the environment
-  if (TOTAL_SHARDS && SHARD_ID) {
-    return Promise.resolve(false);
-  }
-
-  const { object } = await dbClient.getShardingInfo({
-    instanceName: HOSTNAME,
-  });
-  if (object != null) {
-    const { shardId: newShardId, totalShards: newTotalShards } = object;
-    if (newShardId !== shardId || newTotalShards !== totalShards) {
-      shardId = newShardId;
-      totalShards = newTotalShards;
-      return true;
-    }
-  }
-
-  return false;
-};
 
 const minutesAgo = (minutes = 1) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
@@ -117,23 +93,6 @@ const pollNFTEvents = async ({
   myEvents.forEach((event) => {
     botClient.emit("nftEvent", event);
   });
-  const shardNeedsRestart = await shardingHappened(dbClient);
-  // Restart the client when sharding happens
-  if (shardNeedsRestart) {
-    botClient.destroy();
-    const newBotClient = await createBotClient({
-      dbClient,
-      shardId,
-      totalShards,
-    });
-    return pollNFTEvents({
-      botClient: newBotClient,
-      dbClient,
-      lastPollTime: newPollTime,
-      currentPolls: 0,
-      minId: lastPolledId,
-    });
-  }
 
   await sleep(DELAY_BETWEEN_POLLS);
   if (currentPolls < POLLS_BETWEEN_RESETS) {
@@ -161,34 +120,8 @@ const pollNFTEvents = async ({
   });
 };
 
-const waitForSharding = async (dbClient) => {
-  const ready = await shardingHappened(dbClient);
-  if (ready) {
-    return ready;
-  }
-
-  await sleep(POLL_SHARDING_INFO_DELAY);
-  return waitForSharding(dbClient);
-};
-
 const start = async () => {
   const dbClient = await createDbClient();
-  // Client started without sharding info. Waiting to receive it
-  // before handling events.
-  if (shardId == null || totalShards == null) {
-    // Restart the client when sharding happens
-    await waitForSharding(dbClient);
-    const botClient = await createBotClient({
-      dbClient,
-      shardId,
-      totalShards,
-    });
-    return pollNFTEvents({
-      botClient,
-      dbClient,
-    });
-  }
-
   const botClient = await createBotClient({
     dbClient,
     shardId,

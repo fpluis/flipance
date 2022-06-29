@@ -180,12 +180,6 @@ const createTableQueries = [
     price DOUBLE PRECISION NOT NULL,\
     order_hash TEXT
   );`,
-  `CREATE TABLE IF NOT EXISTS sharding_info (\
-    shard_id SMALLINT NOT NULL,\
-    instance_name TEXT NOT NULL,\
-    total_shards SMALLINT NOT NULL,\
-    PRIMARY KEY (instance_name)\
-  );`,
   `CREATE TABLE IF NOT EXISTS nft_events (\
     id serial PRIMARY KEY,\
     transaction_hash CHAR(66),\
@@ -235,6 +229,7 @@ const patchDBQueries = [
   `ALTER TABLE nft_events ADD CONSTRAINT order_hash_marketplace_event_type UNIQUE (order_hash, marketplace, event_type);`,
   `ALTER TABLE offers ADD order_hash TEXT;`,
   `ALTER TABLE floor_prices ADD order_hash TEXT;`,
+  `DROP TABLE IF EXISTS sharding_info;`,
 ];
 
 /**
@@ -690,35 +685,6 @@ const toCollectionFloorObject = (collectionFloor) => {
     marketplace: deserializeMarketplace(marketplace),
     endsAt,
     createdAt,
-  };
-};
-
-/**
- *
- * Maps a Sharding info object from the database to a JS object.
- * @param {Object} shardingInfo
- * @typedef {Object} ShardingInfo - The sharding info needed by a shard to connect to the correct client.
- * @property {Number} shardId - The shard's id.
- * @property {String} instanceName - The instance's identifier.
- * @property {Number} totalShards - Total number of shards running.
- * @return {ShardingInfo}
- */
-const toShardingInfoObject = (shardingInfo) => {
-  if (shardingInfo == null) {
-    return null;
-  }
-
-  const {
-    shard_id: shardId,
-    instance_name: instanceName,
-    total_shards: totalShards,
-    ...props
-  } = shardingInfo;
-  return {
-    ...props,
-    shardId,
-    instanceName,
-    totalShards,
   };
 };
 
@@ -1971,75 +1937,6 @@ export const createDbClient = async ({
       });
   };
 
-  const setShardingInfo = ({ shardId, instanceName, totalShards } = {}) => {
-    if (shardId == null || instanceName == null || totalShards == null) {
-      return { result: "missing-arguments", object: null };
-    }
-
-    return client
-      .query(
-        `INSERT INTO sharding_info (shard_id, instance_name, total_shards)\
-      VALUES($1, $2, $3)\
-      ON CONFLICT (instance_name)\
-      DO\
-        UPDATE SET shard_id = $1, instance_name = $2, total_shards = $3\
-      RETURNING *`,
-        [shardId, instanceName, totalShards]
-      )
-      .then(({ rows }) => {
-        return {
-          result: rows.length > 0 ? "success" : "error",
-          object: toShardingInfoObject(rows[0]),
-        };
-      })
-      .catch((error) => {
-        const { constraint } = error;
-        if (constraint !== "sharding_info_pkey") {
-          logMessage({
-            message: `Error setting collection offer with args ${JSON.stringify(
-              {
-                shardId,
-                instanceName,
-                totalShards,
-              }
-            )}`,
-            level: "error",
-            error,
-          });
-        }
-
-        return {
-          object: null,
-          result:
-            constraint === "sharding_info_pkey" ? "already-exists" : "error",
-        };
-      });
-  };
-
-  const getShardingInfo = ({ instanceName }) => {
-    if (instanceName == null) {
-      return { result: "missing-arguments", object: null };
-    }
-
-    return client
-      .query(
-        `SELECT * FROM sharding_info\
-      WHERE instance_name = $1`,
-        [instanceName]
-      )
-      .then(({ rows }) => {
-        return { result: "success", object: toShardingInfoObject(rows[0]) };
-      })
-      .catch((error) => {
-        logMessage({
-          message: `Error getting sharding info of "${instanceName}"`,
-          level: "error",
-          error,
-        });
-        return { result: "error", object: null };
-      });
-  };
-
   /**
    *
    * Destroys the client's connection to the database.
@@ -2071,8 +1968,6 @@ export const createDbClient = async ({
     addNFTEvent,
     getNFTEvents,
     getWatchedNFTEvents,
-    setShardingInfo,
-    getShardingInfo,
     destroy,
   };
 };
