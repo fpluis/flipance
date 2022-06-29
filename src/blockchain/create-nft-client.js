@@ -69,7 +69,11 @@ const getNFTScanToken = async () => {
     });
 };
 
-// See https://developer.nftscan.com/doc/#operation/getAllNftByUserAddressUsingPOST
+/**
+ * Get the NFTs owned by an ETH account from the NFTScan API. See https://developer.nftscan.com/doc/#operation/getAllNftByUserAddressUsingPOST
+ * @param {String} address - The ETH address
+ * @return {String[]} - The NFTs represented as "collection/tokenId"
+ */
 const getNFTScanNFTs = async (address) => {
   const accessToken = await getNFTScanToken();
   if (accessToken == null) {
@@ -159,7 +163,7 @@ export default async () => {
   /**
    * Get the NFTs owned by an ETH account
    * @param {String} address - The ETH address
-   * @return {Array[String]} - The NFTs represented as "collection/tokenId"
+   * @return {String[]} - The NFTs represented as "collection/tokenId"
    */
   const getAddressNFTs = (address = "") => {
     try {

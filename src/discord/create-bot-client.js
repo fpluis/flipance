@@ -1,3 +1,5 @@
+/// <reference path="../typedefs.js" />
+
 import path from "path";
 import dotenv from "dotenv";
 import { Client, Intents } from "discord.js";
@@ -31,7 +33,14 @@ const {
   MAX_OFFER_FLOOR_DIFFERENCE,
 } = process.env;
 
-const hasAffectedToken = (collection, tokenId, tokens) => {
+/**
+ * Checks whether a wallet alert has a token that is affected by an event.
+ * @param {NFTEvent} event
+ * @param {String[]} tokens
+ * @return {Boolean}
+ */
+const hasAffectedToken = (event, tokens) => {
+  const { collection, tokenId, standard } = event;
   if (tokenId == null) {
     return tokens.some((token) => {
       const [alertCollection] = token.split("/");
@@ -39,42 +48,41 @@ const hasAffectedToken = (collection, tokenId, tokens) => {
     });
   }
 
-  return tokens.includes(`${collection}/${tokenId}`);
+  logMessage({
+    message: "Does event include an affected token?",
+    event,
+    tokens,
+    level: "info",
+  });
+  // Filter out ERC-1155s as false positives since different tokens
+  // share the same id
+  return standard === "ERC-1155"
+    ? false
+    : tokens.includes(`${collection}/${tokenId}`);
 };
 
 /**
  * Determine whether a user/server should be notified of an NFT event
  * based on their preferences
  * @param {Object} params
- * @param {String} params.marketplace - The marketplace id. You can find
- * the whole list at data/marketplaces.json.
- * @param {String} params.eventType - The event type.  You can find
- * the whole list at data/nft-events.json.
- * @param {Number} params.collectionFloor - The latest floor price for
- * the NFT's collection.
- * @param {Number} params.price - The price associated to the event. If
- * it is a sale, the sale price. If it's an offer, the offer price.
- * @param {Object} settings
- * @param {Array[String]} allowedMarketplaces - List of allowed marketplace ids.
- * @param {Array[String]} allowedEvents - List of allowed NFT event ids.
- * @param {Number} maxOfferFloorDifference - Max. deviation from the collection
- * floor an offer can have to be relevant to the alert.
- * @return {Boolean}
+ * @param {NFTEvent} params.event
+ * @param {Alert} params.watcher
+ * @param {Date} params.maxEventAge - How old the event can be to be shown to the user. * @return {Boolean}
  */
-const isAllowedByPreferences = ({
-  event,
-  watcher: {
-    allowedMarketplaces = allowedMarketplaceIds,
-    allowedEvents = allEventIds,
-    maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
-    address: watcherAddress,
-    type: alertType,
-    tokens: alertTokens = [],
-  } = {},
-  maxEventAge,
-}) => {
+const isAllowedByPreferences = (params) => {
   const {
-    collection,
+    event,
+    watcher: {
+      allowedMarketplaces = allowedMarketplaceIds,
+      allowedEvents = allEventIds,
+      maxOfferFloorDifference = Number(MAX_OFFER_FLOOR_DIFFERENCE),
+      address: watcherAddress,
+      type: alertType,
+      tokens: alertTokens = [],
+    } = {},
+    maxEventAge,
+  } = params;
+  const {
     marketplace,
     eventType,
     floorDifference,
@@ -93,7 +101,7 @@ const isAllowedByPreferences = ({
     !allowedEvents.includes(eventType) ||
     (alertType === "wallet" &&
       ![buyer, seller, initiator].includes(watcherAddress) &&
-      !hasAffectedToken(collection, tokenId, alertTokens))
+      !hasAffectedToken(event, alertTokens))
   ) {
     logMessage({
       message: `Filtered "${eventType}" event`,
@@ -105,7 +113,7 @@ const isAllowedByPreferences = ({
       notForMe:
         alertType === "wallet" &&
         ![buyer, seller, initiator].includes(watcherAddress) &&
-        !hasAffectedToken(collection, tokenId, alertTokens),
+        !hasAffectedToken(event, alertTokens),
       event,
       level: "warning",
     });
@@ -141,6 +149,14 @@ const isAllowedByPreferences = ({
 const minutesAgo = (minutes = 1) =>
   new Date(new Date().setMinutes(new Date().getMinutes() - minutes));
 
+/**
+ * Create a bot client that receives NFT events through its returned object's emit function and handles user Discord interactions.
+ * @param {Object} params
+ * @param {Object} params.dbClient - The initialized database client.
+ * @param {Number} params.shardId - The client's shard id.
+ * @param {Number} params.totalShards - The total number of shards for the bot.
+ * @return {Client}
+ */
 export default ({ dbClient, shardId, totalShards }) => {
   let maxEventAge = minutesAgo(2);
 
@@ -160,10 +176,11 @@ export default ({ dbClient, shardId, totalShards }) => {
       maxEventAge = age;
     };
 
-    /*
+    /**
      * Handle NFT events coming from the blockchain. If there is an alert
      * set up for the buyer, seller or collection, notify the user/server
      * that created that alert.
+     * @param {WatchedNFTEvent} event
      */
     const handleNFTEvent = async (event) => {
       const { watchers = [] } = event;
@@ -174,14 +191,6 @@ export default ({ dbClient, shardId, totalShards }) => {
       watchers.forEach(async (watcher) => {
         const { discordId, type: alertType, channelId } = watcher;
         if (isAllowedByPreferences({ event, watcher, maxEventAge })) {
-          // if (event.eventType === "offer" && watcher.type === "wallet") {
-          //   logMessage({
-          //     message: `Notifying watcher of ${event.eventType}`,
-          //     watcher,
-          //     level: "debug",
-          //   });
-          // }
-
           const embed = await buildEmbed({
             ...event,
             watcher,

@@ -1,4 +1,3 @@
-/* eslint-disable max-len */
 /*
  * Logs messages that happen during the bot's execution to log files
 for debugging. The logs are located at the logs folder in the project's

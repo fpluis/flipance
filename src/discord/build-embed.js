@@ -1,3 +1,5 @@
+/// <reference path="../typedefs.js" />
+
 import dotenv from "dotenv";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -62,12 +64,11 @@ const generateTokenMarketplaceURL = (marketplaceId, collection, tokenId) => {
 
 const encodeNameURI = (name) => encodeURI(name.replace(/(\s+|#)/giu, "_"));
 
-const roundDecimals = (number, decimals = 6) =>
-  Number(
-    Math.round((Number(number) + Number.EPSILON) * 10 ** decimals) /
-      10 ** decimals
-  ).toLocaleString("en-US");
-
+/**
+ * Generate the price string that will be shown to users on notifications.
+ * @param {EmbedParams} args
+ * @return {String}
+ */
 const describePrice = ({
   eventType,
   price,
@@ -88,31 +89,18 @@ const describePrice = ({
     : floorDifference === 0
     ? `${priceString} (at the collection's floor price)`
     : floorDifference < 0
-    ? `${priceString} (${roundDecimals(
-        Math.abs(floorDifference) * 100
+    ? `${priceString} (${Number(Math.abs(floorDifference) * 100).toLocaleString(
+        "en-US"
       )}% below the current ${collectionFloor} ${coin} floor price)`
-    : `${priceString} (${roundDecimals(
-        floorDifference * 100
+    : `${priceString} (${Number(floorDifference * 100).toLocaleString(
+        "en-US"
       )}% above the current ${collectionFloor} ${coin} floor price)`;
 };
 
 /**
  * Create the embed descriptions for a new offer event.
- * @param {Number} price - The price in Ether.
- * @param {Number} collectionFloor - The collection's floor in Ether.
- * @param {String} tokenId - The token's id.
- * @param {"user"|"server"} target - Whether the Discord user receiving
- * the notification is a user or a server.
- * @param {String} collectionUrl - The URL for the collection, retrieved
- * from the collection's metadata.
- * @param {String} collectionMetadata - The collection's metadata.
- * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceDescription - The price description in Ether.
- * @typedef {Object} EmbedDescription
- * @property {String} title - The embed's title (link at the top of the embed).
- * @property {String} url - The title's url.
- * @property {String} description - The embed's description of the event.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeOffer = ({
   tokenId,
@@ -156,21 +144,8 @@ const describeOffer = ({
 
 /**
  * Create the embed descriptions for a cancel order event.
- * @param {Number} price - The price in Ether.
- * @param {Number} collectionFloor - The collection's floor in Ether.
- * @param {String} tokenId - The token's id.
- * @param {"user"|"server"} target - Whether the Discord user receiving
- * the notification is a user or a server.
- * @param {String} collectionUrl - The URL for the collection, retrieved
- * from the collection's metadata.
- * @param {String} collectionMetadata - The collection's metadata.
- * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceDescription - The price description in Ether.
- * @typedef {Object} EmbedDescription
- * @property {String} title - The embed's title (link at the top of the embed).
- * @property {String} url - The title's url.
- * @property {String} description - The embed's description of the event.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeCancelOrder = ({
   tokenId,
@@ -217,13 +192,8 @@ const describeCancelOrder = ({
 
 /**
  * Create the embed description for an acceptOffer event.
- * @param {String} marketplaceId - The marketplace's id. Complete list is
- * available at data/marketplaces.json
- * @param {String} collection - The collection's address on the blockchain.
- * @param {String} tokenId - The id of the token being traded.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeAcceptOffer = (args) => {
   const {
@@ -262,13 +232,8 @@ const describeIntermediary = (intermediary) =>
 
 /**
  * Create the embed description for an acceptAsk event.
- * @param {String} marketplaceId - The marketplace's id. Complete list is
- * available at data/marketplaces.json
- * @param {String} collection - The collection's address on the blockchain.
- * @param {String} tokenId - The id of the token being traded.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeAcceptAsk = (args) => {
   const {
@@ -308,13 +273,8 @@ const describeAcceptAsk = (args) => {
 
 /**
  * Create the embed description for a createAuction event.
- * @param {String} marketplaceId - The marketplace's id. Complete list is
- * available at data/marketplaces.json
- * @param {String} collection - The collection's address on the blockchain.
- * @param {String} tokenId - The id of the token being traded.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeCreateAuction = (args) => {
   const {
@@ -338,13 +298,8 @@ const describeCreateAuction = (args) => {
 
 /**
  * Create the embed description for a settleAuction event.
- * @param {String} marketplaceId - The marketplace's id. Complete list is
- * available at data/marketplaces.json
- * @param {String} collection - The collection's address on the blockchain.
- * @param {String} tokenId - The id of the token being traded.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeSettleAuction = (args) => {
   const {
@@ -378,13 +333,8 @@ const describeSettleAuction = (args) => {
 
 /**
  * Create the embed description for an auctionBid event.
- * @param {String} marketplaceId - The marketplace's id. Complete list is
- * available at data/marketplaces.json
- * @param {String} collection - The collection's address on the blockchain.
- * @param {String} tokenId - The id of the token being traded.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @return EmbedDescription
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeAuctionBid = ({
   tokenId,
@@ -416,13 +366,13 @@ const describeAuctionBid = ({
 
 /**
  * Create the embed description for a listing event.
- * @param {String} priceDescription - The price description in Ether.
- * @param {String} marketplace - The marketplace's name.
- * @param {String} marketplaceId - One of the marketplace ids defined in
- * data/marketplaces.json
- * @param {String} collection - The collection's Ethereum address
- * @param {String} tokenId - The token's id
- * @return EmbedDescription
+ * @typedef {Object} EmbedDescriptions
+ * @property {String} priceDescription
+ * @property {String} subjectDescription
+ * @property {String} collectionDescription
+ * @typedef {EmbedParams & EmbedDescriptions} EmbedParamsWithDescriptions
+ * @param {EmbedParamsWithDescriptions} args
+ * @return {EmbedDescription}
  */
 const describeListing = (args) => {
   const {
@@ -446,7 +396,15 @@ const describeListing = (args) => {
   };
 };
 
-const describeSubject = ({ watcher: { nickname, address } }) => {
+/**
+ * Generate the alert's name that will be shown to users on the embed.
+ * @param {EmbedParams} args
+ * @return {String}
+ */
+const describeSubject = (args) => {
+  const {
+    watcher: { nickname, address },
+  } = args;
   if (nickname == null) {
     return `[${makeAddressReadable(
       address
@@ -456,6 +414,15 @@ const describeSubject = ({ watcher: { nickname, address } }) => {
   return `[${nickname}](https://etherscan.io/address/${address})`;
 };
 
+/**
+ * Generate the collection's name that will be shown to users on the embed.
+ * @param {Object} args
+ * @param {Object|null} args.collectionMetadata
+ * @param {String} args.collectionMetadata.name
+ * @param {String} args.collectionUrl
+ * @param {String} args.collection
+ * @return {String}
+ */
 const describeCollection = ({
   collectionMetadata,
   collectionUrl,
@@ -467,21 +434,8 @@ const describeCollection = ({
 
 /**
  * Create the embed descriptions for an NFT event.
- * @param {Number} price - The price in Ether.
- * @param {Number} collectionFloor - The collection's floor in Ether.
- * @param {String} tokenId - The token's id.
- * @param {"user"|"server"} target - Whether the Discord user receiving
- * the notification is a user or a server.
- * @param {String} collectionUrl - The URL for the collection, retrieved
- * from the collection's metadata.
- * @param {String} collectionMetadata - The collection's metadata.
- * @param {String} collectionMetadata.name - The collection's name.
- * @param {String} priceDescription - The price description in Ether.
- * @typedef {Object} EmbedDescription
- * @property {String} title - The embed's title (link at the top of the embed).
- * @property {String} url - The title's url.
- * @property {String} description - The embed's description of the event.
- * @return EmbedDescription
+ * @param {EmbedParams} args
+ * @return {EmbedDescription}
  */
 const describeEvent = (args) => {
   const { eventType } = args;
@@ -512,34 +466,17 @@ const describeEvent = (args) => {
 
 /**
  * Create the embed descriptions for an NFT event.
- * @param {String} eventType - One of the event ids defined in data/events.json
- * @param {String} transactionHash - The transaction's hash in Ethereum.
- * @param {String} marketplace - One of the marketplace ids defined in
- * data/marketplaces.json
- * @param {String} seller - The seller's Ethereum address
- * @param {String} buyer - The buyer's Ethereum address
- * @param {String} collection - The collection's Ethereum address
- * @param {String} metadataUri - The collection's metadata URI retrieved
- * from the collection's contract.
- * @param {Number} endsAt - The timestamp (seconds since Epoch) when the
- * event ends. Relevant for offers, auctions and listings.
- * @param {Number} price - The price in Ether.
- * @param {Number} collectionFloor - The collection's floor in Ether.
- * @param {String} tokenId - The token's id.
- * @param {"user"|"server"} target - Whether the Discord user receiving
+ *
+ * @typedef {"user"|"server"} EmbedTarget - Whether the Discord user receiving
  * the notification is a user or a server.
- * @param {String} collectionUrl - The URL for the collection, retrieved
- * from the collection's metadata.
- * @param {String} collectionMetadata - The collection's metadata.
- * @param {String} collectionMetadata.name - The collection's name.
- * @typedef {Object} EmbedDescription
- * @property {String} title - The embed's title (link at the top of the embed).
- * @property {String} url - The title's url.
- * @property {String} description - The embed's description of the event.
- * @property {String} nickname - The alert's nickname.
- * @return EmbedDescription
+ * @typedef {Object} EmbedExtraParams
+ * @property {Alert} watcher
+ * @property {EmbedTarget} target
+ * @typedef {NFTEvent & EmbedExtraParams} EmbedParams
+ * @param {EmbedParams} params
+ * @return {EmbedDescription}
  */
-export default async (args) => {
+export default async (params) => {
   const {
     eventType,
     transactionHash,
@@ -551,7 +488,7 @@ export default async (args) => {
     tokenId,
     endsAt,
     watcher,
-  } = args;
+  } = params;
   const { nickname, address: alertAddress } = watcher || {};
   const metadata = await (metadataUri
     ? getMetadata(metadataUri, tokenId, transactionHash).catch((error) => {
@@ -571,7 +508,7 @@ export default async (args) => {
     color: 0x0099ff,
     url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
     ...describeEvent({
-      ...args,
+      ...params,
       collectionMetadata,
       marketplace,
       marketplaceId,

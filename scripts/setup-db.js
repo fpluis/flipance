@@ -1,7 +1,5 @@
 /*
-  This script will create or replace the Flipance database with its schema.
-  IMPORTANT: It will wipe the database if it exists, so only use it if you are
-  absolutely sure.
+  This script will create or update in-place the Flipance database with the latest schema.
 */
 
 import path from "path";

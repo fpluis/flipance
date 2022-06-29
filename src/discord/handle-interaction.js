@@ -1,4 +1,3 @@
-/* eslint-disable max-len */
 /*
  * This function handles incoming user interactions to create/edit/list alerts
 and settings. If the interaction is valid, the database is queried and the
@@ -299,15 +298,14 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
     });
   }
 
-  const personalAlertList = userAlerts.reduce(
-    (message, { nickname, address, type }) => {
+  const personalAlertList = userAlerts
+    .slice(0, 20)
+    .reduce((message, { nickname, address, type }) => {
       const typeDescription =
         type === "wallet" ? `(wallet alert)` : `(collection alert)`;
       const fixedNickname = nickname == null ? "(no nickname)" : bold(nickname);
       return `${message}\n${fixedNickname}: ${address} ${typeDescription}`;
-    },
-    ""
-  );
+    }, "");
   const collectionAlertList = guildAlerts.reduce(
     (message, { nickname, address }) => {
       const fixedNickname = nickname == null ? "(no nickname)" : bold(nickname);

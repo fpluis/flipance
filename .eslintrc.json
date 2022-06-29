@@ -17,6 +17,12 @@
       "plugins": [
         "jest"
       ]
+    },
+    {
+      "files": ["*"],
+      "rules": {
+        "max-len": "off"
+      }
     }
   ],
   "parserOptions": {

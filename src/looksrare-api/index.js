@@ -1,7 +1,8 @@
-/* eslint-disable max-len */
 /*
  * Functions to interact with LooksRare's API
  */
+
+/// <reference path="../typedefs.js" />
 
 import path from "path";
 import dotenv from "dotenv";
@@ -31,7 +32,7 @@ const looksRareAPI =
  * @param  {String} endpoint - The endpoint to call.
  * @param  {Number} retries - The max. number of times to call
  * the endpoint.
- * @return {Array} result - The result of the call.
+ * @return {Object[]} The result of the call.
  */
 const callLRWithRetries = (endpoint = "", retries = 3) => {
   const options = {};
@@ -70,17 +71,12 @@ const callLRWithRetries = (endpoint = "", retries = 3) => {
 };
 
 /**
- * Get a collection's first N offers on LooksRare, sorted by price descending (the highest offer will be the first in the returned array). See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
+ * Get a collection or token's first N offers on LooksRare, sorted by price descending (the highest offer will be the first in the returned array). See https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders for reference.
  * @param {Object} params - The query parameters
  * @param {String} params.collection - The collection's address.
+ * @param {String|null} params.tokenId - The token's id.
  * @param {String} params.first - How many orders to retrieve, ordered by highest offer price.
- * @typedef LooksRareOrder - The LooksRare offer.
- * @param {String} hash - The bid's hash.
- * @param {String} price - The bid's amount in wei.
- * @param {Number} endTime - The timestamp for when the bid ends.
- * @param {String} signer - The buyer's Ethereum address.
- * @param tokenId
- * @return {Array[LooksRareOrder]} offers - The result of the call.
+ * @return {LROrder[]} offers - The result of the call.
  */
 export const getHighestOffers = ({ collection, tokenId, first = 1 }) => {
   let endpoint = `${looksRareAPI}/api/v1/orders?isOrderAsk=false&collection=${collection}&strategy=${LR_COLLECTION_BID_STRATEGY_ADDRESS}&pagination[first]=${first}&status[]=VALID&sort=PRICE_DESC`;
@@ -101,13 +97,21 @@ export const getHighestOffers = ({ collection, tokenId, first = 1 }) => {
  * @param {Object} params - The query parameters
  * @param {String} params.collection - The collection's address.
  * @param {String} params.first - How many orders to retrieve, ordered by lowest asking price.
- * @return {Array[LooksRareOrder]} floor - The collection's floor order.
+ * @return {LROrder[]} floor - The collection's floor order.
  */
 export const getCollectionFloor = ({ collection, first = 1 }) =>
   callLRWithRetries(
     `${looksRareAPI}/api/v1/orders?isOrderAsk=true&collection=${collection}&strategy=${LR_COLLECTION_STANDARD_SALE_FIXED_PRICE}&pagination[first]=${first}&status[]=VALID&sort=PRICE_ASC`
   );
 
+/**
+ * Get the latest events on LooksRare of a specific type. See https://looksrare.github.io/api-docs/#/Events/EventController.getEvents for reference.
+ * @param {Object} params - The query parameters
+ * @param {String|null} params.cursor - The latest event id: only orders older (with a lower id) than this cursor will be returned.
+ * @param {LREventType} params.type - The type of event to fetch.
+ * @param {String} params.first - How many orders to retrieve, ordered by highest offer price.
+ * @return {LROrder[]} offers - The result of the call.
+ */
 export const getEvents = ({ cursor = null, type = "LIST" }) => {
   let endpoint = `${looksRareAPI}/api/v1/events?type=${type}&pagination[first]=150`;
   if (cursor) {

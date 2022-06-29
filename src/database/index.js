@@ -1,5 +1,7 @@
 /* eslint-disable no-await-in-loop */
-/* eslint-disable max-len */
+
+/// <reference path="../../src/typedefs.js" />
+
 import process from "process";
 import { readFileSync } from "fs";
 import path from "path";
@@ -460,18 +462,6 @@ const deserializeStandard = (serializedStandardId) =>
  * Maps a Settings object from the database to a JS object and sets some
  * settings to the global defaults if the object does not have them.
  * @param {Object} settings
- * @typedef {("rarible"|"foundation"|"x2y2"|"openSea"|"looksRare")} Marketplace - The list of ids can be found in data/marketplaces.json.
- * @typedef {("offer"|"placeBid"|"acceptOffer"|"acceptAsk"|"cancelOrder"|"createAuction"|"settleAuction")} EventType - The list of ids can be found
- * in data/nft-events.json.
- * @typedef {Object} Settings - The alert/user settings object used
- * to filter events depending on type, marketplace, price, etc.
- * @property {Number} maxOfferFloorDifference - The max difference an offer
- * can have with respect to the collection's floor to notify the user/server.
- * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces
- * which the user/alert wants to watch.
- * @property {Array[EventType]} allowedEvents - The list of NFT event types
- * which the user/alert wants to watch.
- * @property {Number} id - The settings's id in the database.
  * @return {Settings}
  */
 const toSettingsObject = (settings) => {
@@ -503,21 +493,8 @@ const toSettingsObject = (settings) => {
 };
 
 /**
- *
  * Maps a User object (and a Settings object, if present) from the database to a JS object.
  * @param {Object} user
- * @typedef {Object} User - The user information.
- * @property {Number} maxOfferFloorDifference - The max difference an offer
- * can have with respect to the collection's floor to notify the user/server.
- * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces
- * which the user wants to watch.
- * @property {Array[EventType]} allowedEvents - The list of NFT event types
- * which the user wants to watch.
- * @property {Number} id - The user's id in the database.
- * @property {Number} settingsId - The user's settings id in the database.
- * @property {String} discordId - The user's discord id.
- * @property {Date} createdAt - The Date when the user was created.
- * @property {Number} alertLimit - The max. number of alerts that the user can have.
  * @return {User}
  */
 const toUserObject = (user) => {
@@ -543,27 +520,8 @@ const toUserObject = (user) => {
 };
 
 /**
- *
- * Maps an Alert object (and a Settings object, if present) from the database to
- * a JS object. If a specific setting for the alert is missing and the user object
- * was provided, the setting from the user will be returned.
+ * Maps an Alert object (and a Settings object, if present) from the database to a JS object. If a specific setting for the alert is missing and the user object was provided, the setting from the user will be returned.
  * @param {Object} alert
- * @typedef {Object} Alert - The alert information.
- * @property {Number} maxOfferFloorDifference - The max difference an offer
- * can have with respect to the collection's floor to create a notification.
- * @property {Array[Marketplace]} allowedMarketplaces - The list of marketplaces which the alert wants to watch.
- * @property {Array[EventType]} allowedEvents - The list of NFT event types which the alert wants to watch.
- * @property {Number} id - The alert's id in the database.
- * @property {Number} settingsId - The user's settings id in the database.
- * @property {String} userId - The id of this alert's creator.
- * @property {String} address - The Ethereum address that the alert watches.
- * @property {String|null} nickname - The alert's nickname.
- * @property {Date} createdAt - The Date when the alert was created.
- * @property {Date} syncedAt - The Date when the alert's tokens were last modified.
- * @property {String|null} channelId - The id of the Discord channel for which this alert was created.
- * @property {Array[String]} tokens - The tokens that the alert tracks. They
- * are periodically updated. The "syncedAt" property shows when they were updated
- * last. The format for the tokens is "collection/tokenId".
  * @return {Alert}
  */
 const toAlertObject = (alert) => {
@@ -620,15 +578,6 @@ const toAlertObject = (alert) => {
  *
  * Maps an Offer object from the database to a JS object.
  * @param {Object} offer
- * @typedef {Object} Offer - The offer information.
- * @property {String} collection - The collection's Ethereum address.
- * @property {String} tokenId - The id of the token for which the offer was
- * made. If it's a collection offer, it will will be and empty string.
- * @property {Date} createdAt - The Date when the offer was made in that marketplace.
- * @property {Date} endsAt - The Date when the offer expires.
- * @property {Marketplace} marketplace - The id of the marketplace where this offer was made.
- * @property {String} orderHash - The hash of the offer order on that marketplace.
- * @property {Number} price - The offer's price in Ethereum.
  * @return {Offer}
  */
 const toOfferObject = (offer) => {
@@ -658,13 +607,6 @@ const toOfferObject = (offer) => {
  *
  * Maps a Collection floor object from the database to a JS object.
  * @param {Object} collectionFloor
- * @typedef {Object} CollectionFloor - The floor information.
- * @property {String} collection - The collection's Ethereum address.
- * @property {Date} createdAt - The Date when the floor price was detected.
- * Will be different from the time when the floor listing was made.
- * @property {Marketplace} marketplace - The id of the marketplace where this floor was detected.
- * @property {String} orderHash - The hash of the listing order on that marketplace.
- * @property {Number} price - The floor's price in Ethereum.
  * @return {CollectionFloor}
  */
 const toCollectionFloorObject = (collectionFloor) => {
@@ -692,31 +634,6 @@ const toCollectionFloorObject = (collectionFloor) => {
  *
  * Maps an NFT Event object from the database to a JS object.
  * @param {Object} NFTEvent
- * @typedef {"ethereum"} Blockchain - The blockchain where the event took place
- * @typedef {"ERC-721"|"ERC-1155"} Standard - The NFT standard
- * @typedef {Object} NFTEvent - The NFT Event object.
- * @property {String|null} transactionHash - The transaction hash in the blockchain.
- * @property {String|null} orderHash - The order hash in the marketplace where it originated.
- * @property {Date} createdAt - The Date when the event was added to the database.
- * @property {Date|null} startsAt - The Date when the event happened.
- * @property {Date|null} endsAt - The Date when the event stops.
- * @property {String|null} tokenId - The id of the token involved in the event. If it's a collection event (i.e. collection offer) or an event without token id (i.e. cancel order), it will will be an empty string.
- * @property {String|null} compositeIdentifier - A string with the shape collection/tokenId that uniquely identifies the token.
- * @property {EventType|null} eventType - The type of event. See data/nft-events.json for the complete list.
- * @property {Blockchain|null} blockchain - The blockchain's id
- * @property {Marketplace|null} marketplace - The id of the marketplace where this floor was detected.
- * @property {String|null} collection - The collection's address.
- * @property {String|null} initiator - The address of the tx's initiator.
- * @property {String|null} buyer - The address that buys the NFT.
- * @property {String|null} seller - The address that sells the NFT.
- * @property {Number|null} gas - The gas consumed by the tx.
- * @property {Number|null} amount - The number of NFTs transferred.
- * @property {String|null} metadataUri - The metadata URI associated to the NFT.
- * @property {Standard|null} standard - The metadata URI associated to the NFT.
- * @property {Boolean|null} isHighestOffer - For offers, whether the offer is the highest offer at the time.
- * @property {Number|null} collectionFloor - For offers and listings, the collection's floor at the time the order is made.
- * @property {Number|null} floorDifference - For an offer and listing, its difference wrt the current floor as a percentage between 0 and 1. I.e. if the floor is 1 ETH and the offer is 0.8 ETH, the floorDifference = 0.2. Also accepts negative values: if the floor is 1 ETH and the listing is 4 ETH, the floorDifference = (1 - 4 / 1) = -3.
- * @property {Number|null} price - The price in the blockchain's native token. If it's an offer, the offer price; if it's a sale, the sale price.
  * @return {NFTEvent}
  */
 const toNFTEventObject = (nftEvent) => {
@@ -1092,7 +1009,7 @@ export const createDbClient = async ({
    * @param {String} params.address - (Required) The Ethereum address.
    * @typedef {Object} AlertsResponse - The responses returned by alert-modifying database functions that affect multiple alerts.
    * @property {AlertResultType} result - The query's result.
-   * @property {Array[Alert]} objects - The new alerts.
+   * @property {Alert[]} objects - The new alerts.
    * @return {AlertsResponse}
    */
   const getAlertsByAddress = ({ address } = {}) => {
@@ -1242,7 +1159,7 @@ export const createDbClient = async ({
    * Sets the tokens for an alert.
    * @param {Object} params
    * @param {String} params.id - (Required) The alert's id.
-   * @param {Array[String]} params.tokens - (Required) The new tokens that will completely overwrite the old ones.
+   * @param {String[]} params.tokens - (Required) The new tokens that will completely overwrite the old ones.
    * @return {AlertResponse}
    */
   const setAlertTokens = ({ id, tokens } = {}) => {
@@ -1358,7 +1275,7 @@ export const createDbClient = async ({
    * @param {Object} params
    * @param {String} params.discordId (Required) The Discord id of the user
    * who wants to modify their own settings.
-   * @param {Array[EventType]} params.allowedEvents (Required) The new allowed events.
+   * @param {EventType[]} params.allowedEvents (Required) The new allowed events.
    * @param {String} params.address (Optional) The address of the alert to edit.
    * If provided, the settings of the alert and NOT the user will be edited.
    * @param {String} params.nickname (Optional) The nickname of the alert to
@@ -1426,7 +1343,7 @@ export const createDbClient = async ({
    * @param {Object} params
    * @param {String} params.discordId (Required) The Discord id of the user
    * who wants to modify their own settings.
-   * @param {Array[Marketplace]} params.allowedMarketplaces (Required) The new allowed marketplaces.
+   * @param {Marketplace[]} params.allowedMarketplaces (Required) The new allowed marketplaces.
    * @param {String} params.address (Optional) The address of the alert to edit.
    * If provided, the settings of the alert and NOT the user will be edited.
    * @param {String} params.nickname (Optional) The nickname of the alert to
@@ -1711,7 +1628,7 @@ export const createDbClient = async ({
    * @param {NFTEvent} nftEvent
    * @typedef {Object} NFTEventResponse - The responses returned by database functions that affect NFT events.
    * @property {NFTEventResultType} result - The query's result.
-   * @property {Array[NFTEventResponse]} object - The new NFT event.
+   * @property {NFTEventResponse[]} object - The new NFT event.
    * @return {NFTEventResponse}
    */
   const addNFTEvent = (nftEvent = {}) => {
@@ -1859,7 +1776,7 @@ export const createDbClient = async ({
    * @param {Date} params.createdAt - The Date after which to retrieve events.
    * @typedef {Object} NFTEventsResponse - The responses returned by database functions that affect multiple NFT events.
    * @property {NFTEventResultType} result - The query's result.
-   * @property {Array[NFTEventResponse]} objects - The new NFT events.
+   * @property {NFTEventResponse[]} objects - The new NFT events.
    * @return {NFTEventsResponse}
    */
   const getNFTEvents = ({ createdAt } = {}) => {
@@ -1895,7 +1812,7 @@ export const createDbClient = async ({
    * @param {Date} params.createdAt - The Date after which to retrieve events.
    * @typedef {Object} NFTEventsResponse - The responses returned by database functions that affect multiple NFT events.
    * @property {NFTEventResultType} result - The query's result.
-   * @property {Array[NFTEventResponse]} objects - The new NFT events.
+   * @property {NFTEventResponse[]} objects - The new NFT events.
    * @return {NFTEventsResponse}
    */
   const getWatchedNFTEvents = ({ createdAt, minId = 0 } = {}) => {

@@ -39,7 +39,13 @@ const minutesAgo = (minutes = 1) =>
  * charge of monitoring blockchain events on the target marketplaces and
  * notifying users/servers of these events.
  * @param {Object} params
+ * @param {Object} params.botClient - The initialized Discord client.
  * @param {Object} params.dbClient - The initialized database client.
+ * @param {Date} params.lastPollTime - The date when the database events
+ * were last polled.
+ * @param {Number} params.currentPolls - The number of times the bot has
+ * polled the database without restarting the client.
+ * @param {Number} minId - The last event id retrieved, used for pagination.
  */
 const pollNFTEvents = async ({
   botClient,
