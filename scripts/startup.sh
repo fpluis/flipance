@@ -59,6 +59,6 @@ echo "DB set up"
 
 sudo npm install forever -g
 echo "Forever installed"
-sudo forever start scripts/polling-node.js
+sudo forever start scripts/crawler.js
 sudo forever start scripts/bot-shard.js
 echo "Process launched"

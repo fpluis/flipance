@@ -15,6 +15,6 @@ COPY . .
 
 CMD node scripts/setup-db.js && \
   node scripts/register-commands.js && \
-  node scripts/polling-node.js
+  node scripts/crawler.js
 
-# CMD node scripts/polling-node.js
+# CMD node scripts/crawler.js

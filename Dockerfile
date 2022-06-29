@@ -20,5 +20,5 @@ RUN npm install
 COPY . .
 
 CMD node scripts/setup-db.js && \
-    node scripts/polling-node.js && \
+    node scripts/crawler.js && \
     node scripts/bot-shard.js
