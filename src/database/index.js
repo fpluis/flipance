@@ -508,7 +508,7 @@ const toUserObject = (user) => {
     settings_id: settingsId,
     discord_id: discordId,
     created_at: createdAt,
-    alert_limit: alertLimit,
+    // alert_limit: alertLimit,
     ...props
   } = user;
   return {
@@ -517,7 +517,7 @@ const toUserObject = (user) => {
     settingsId,
     discordId,
     createdAt,
-    alertLimit,
+    alertLimit: Number(DEFAULT_USER_ALERT_LIMIT),
   };
 };
 
