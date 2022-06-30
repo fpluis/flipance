@@ -22,7 +22,12 @@ import logMessage from "../log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const { MAX_NICKNAME_LENGTH = 50, MARKETPLACES } = process.env;
+const {
+  MAX_OFFER_FLOOR_DIFFERENCE = 25,
+  MAX_NICKNAME_LENGTH = 50,
+  DEFAULT_USER_ALERT_LIMIT = 5,
+  MARKETPLACES,
+} = process.env;
 
 const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const allNftEvents = JSON.parse(readFileSync("data/nft-events.json"));
@@ -600,12 +605,18 @@ const describeSettings = ({
   address,
   nickname,
 }) => {
-  const commonSettings = `**Max allowed difference below collection floor for offers**: ${maxOfferFloorDifference}%.\n\n**Allowed marketplaces**: ${marketplaces
-    .filter(({ id }) => allowedMarketplaces.includes(id))
-    .map(({ name }) => name)
-    .join(", ")}\n\n**Allowed NFT events**: ${nftEvents
+  const allowedMarketplacesString =
+    marketplaces.length > 1
+      ? `\n\n**Allowed marketplaces**: ${marketplaces
+          .filter(({ id }) => allowedMarketplaces.includes(id))
+          .map(({ name }) => name)
+          .join(", ")}`
+      : "";
+  const commonSettings = `**Max allowed difference below collection floor for offers**: ${maxOfferFloorDifference}%.${allowedMarketplacesString}\n\n**Allowed NFT events**: ${nftEvents
     .filter(({ id }) => allowedEvents.includes(id))
-    .map(({ name }) => name)
+    .map(({ name, lrName }) =>
+      isLooksRareOnly && lrName != null ? lrName : name
+    )
     .join(", ")}`;
   if (nickname != null) {
     return `Settings for alert "**${nickname}**" ${
@@ -784,8 +795,8 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
       .setCustomId(customId)
       .setMinValues(1)
       .addOptions(
-        nftEvents.map(({ id, name }) => ({
-          label: name,
+        nftEvents.map(({ id, name, lrName }) => ({
+          label: isLooksRareOnly && lrName != null ? lrName : name,
           default: allowedEvents.includes(id),
           value: id,
         }))
@@ -961,6 +972,52 @@ const handleSetNickname = async ({ dbClient, interaction }) => {
   });
 };
 
+const handleHelp = ({ discordClient, interaction }) => {
+  let content;
+  if (isLooksRareOnly === true) {
+    content = `Welcome to the subscription channel for the **LooksRare Notifications Bot**!\n
+The notifications bot will send you direct messages for a wide range of LooksRare events from wallet addresses that you specify (up to ${DEFAULT_USER_ALERT_LIMIT}).\n
+**To subscribe to notifications**:\n
+Type in /walletalert [address] [nickname]\n
+    [address] = the wallet you want to get events for.\n
+    [nickname] = a nickname for your address.\n
+**Here’s an example**:\n
+/walletalert [0x4E52c6BaFF43A0f22d28EfC9911a65f5140E3453] [LooksRare Main]\n
+**If you want to get fancy, other commands include**:\n
+    /setnickname [address] [nickname]: Set or reset a nickname for an already subscribed address.\n
+    /setallowedevents: Customize what type of event notifications to receive.\n
+    /setmaxofferfloordifference percentage [XX%]: Set the maximum deviation from a collection’s floor price that an offer has to be to notify you with a ping. The default value is ${MAX_OFFER_FLOOR_DIFFERENCE}%.\n
+    /listalerts: Lists all existing alert subscriptions that you currently have.\n
+    /settings: View your current settings.\n
+    /deletealert [address or nickname]: Removes the subscription for a specified address or nickname.\n
+**Important! Please make sure that you are receiving messages from ${discordClient.user.tag}. Any other bot with the same name should be blocked and removed.**\n
+**Please also add looksrare.org as a trusted domain on Discord so if any other bot links you to a site other than LooksRare, Discord will warn you.**`;
+  } else {
+    content = `Welcome to the Flipance notifications bot!\n
+The notifications bot will send you direct messages for NFT events that happen across multiple marketplaces from the wallet addresses or collections that you specify (up to ${DEFAULT_USER_ALERT_LIMIT}). As a server moderator, you can also set up collection alerts on a specific channel.\n
+**To subscribe to notifications**:\n
+Type in /walletalert [address] [nickname]\n
+    [address] = the wallet you want to get events for.\n
+    [nickname] = a nickname for your address.\n
+**Here’s an example**:\n
+/walletalert [0x4E52c6BaFF43A0f22d28EfC9911a65f5140E3453] [LooksRare Main]\n
+**If you want to get fancy, other commands include**:\n
+    /setnickname [address] [nickname]: Set or reset a nickname for an already subscribed address.\n
+    /setallowedevents: Customize what type of event notifications to receive.\n
+    /setmaxofferfloordifference percentage [XX%]: Set the maximum deviation from a collection’s floor price that an offer has to be to notify you with a ping. The default value is ${MAX_OFFER_FLOOR_DIFFERENCE}%.\n
+    /listalerts: Lists all existing alert subscriptions that you currently have\n
+    /settings: View your current settings.\n
+    /deletealert [address or nickname]: Removes the subscription for a specified address or nickname.\n
+**Important! Please make sure that you are receiving messages from ${discordClient.user.tag}. Any other bot with the same name should be blocked and removed.**\n
+**Please also add looksrare.org as a trusted domain on Discord so if any other bot links you to a site other than LooksRare, Discord will warn you.**`;
+  }
+
+  return interaction.reply({
+    content,
+    ephemeral: true,
+  });
+};
+
 /**
  * Routes the input interaction to its handler, depending on the interaction's commandName.
  * @param  {Object} args
@@ -992,11 +1049,7 @@ const handleCommand = async (args) => {
       return handleSetNickname(args);
     case "help":
     default:
-      return interaction.reply({
-        content:
-          "To get personal notifications about a wallet's activity, please use the /walletalert command. To get channel-wide alerts for a collection, use the /collectionalert command. To delete an alert, use the /deletealert command.",
-        ephemeral: true,
-      });
+      return handleHelp(args);
   }
 };
 
