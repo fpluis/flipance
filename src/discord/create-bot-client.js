@@ -48,12 +48,6 @@ const hasAffectedToken = (event, tokens) => {
     });
   }
 
-  logMessage({
-    message: "Does event include an affected token?",
-    event,
-    tokens,
-    level: "info",
-  });
   // Filter out ERC-1155s as false positives since different tokens
   // share the same id
   return standard === "ERC-1155"
