@@ -209,6 +209,7 @@ There are also some global settings you can modify as environment variables:
 - **ETHEREUM_NETWORK**: The ethereum network the bot will connect to. Currently supported values are _homestead_ (the default, also known as "mainnet") and _rinkeby_. Only LooksRare trades are tracked on the Rinkeby testnet.
 - **LOGGING_LEVELS**: Comma-separated list of logging levels you are interested in. Each log line is a JSON object with a _level_, a _message_ and additional properties. Current log levels: info,error,warning. Default: info,error.
 - **BACKUP_LOGS**: (Boolean) Whether or not the logs should be backed up to log files.
+- **SHOW_NFT_ATTRIBUTES** (Boolean) Whether or not the NFT's attributes will be included in the embed as fields.
 
 ## Terraform deployment
 

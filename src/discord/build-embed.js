@@ -599,7 +599,11 @@ export default async (params) => {
     });
   }
 
-  if (metadata.attributes && Array.isArray(metadata.attributes)) {
+  if (
+    metadata.attributes &&
+    Array.isArray(metadata.attributes) &&
+    SHOW_NFT_ATTRIBUTES === true
+  ) {
     metadata.attributes
       .filter(
         ({ trait_type, value }) =>
