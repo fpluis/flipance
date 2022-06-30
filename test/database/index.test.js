@@ -739,7 +739,11 @@ test("getAlertsByAddress with a setting present in the user but missing on the a
   });
   expect(alert.maxOfferFloorDifference).toBe(32);
   expect(alert.allowedMarketplaces).toMatchObject(allMarketplaceIds);
-  expect(alert.allowedEvents).toMatchObject(allEventIds);
+  expect(alert.allowedEvents).toMatchObject([
+    "offer",
+    "acceptOffer",
+    "acceptAsk",
+  ]);
 });
 
 test("getAlertsByNickname without arguments", async () => {

@@ -1,7 +1,8 @@
 [
   {
     "id": "offer",
-    "name": "Offer"
+    "name": "Offer",
+    "lrName": "Offers received"
   },
   {
     "id": "placeBid",
@@ -9,7 +10,8 @@
   },
   {
     "id": "acceptOffer",
-    "name": "Accept Offer"
+    "name": "Accept Offer",
+    "lrName": "Accepted offers"
   },
   {
     "id": "acceptAsk",
@@ -29,6 +31,6 @@
   },
   {
     "id": "listing",
-    "name": "New listing"
+    "name": "New listings"
   }
 ]
