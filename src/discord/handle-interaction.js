@@ -323,10 +323,13 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   const personalAlertList = userAlerts
     .slice(0, 20)
     .reduce((message, { nickname, address, type }) => {
-      const typeDescription =
-        type === "wallet" ? `(wallet alert)` : `(collection alert)`;
+      const typeDescription = isLooksRareOnly
+        ? ""
+        : type === "wallet"
+        ? ` (wallet alert)`
+        : ` (collection alert)`;
       const fixedNickname = nickname == null ? "(no nickname)" : bold(nickname);
-      return `${message}\n${fixedNickname}: ${address} ${typeDescription}`;
+      return `${message}\n${fixedNickname}: ${address}${typeDescription}`;
     }, "");
   const collectionAlertList = guildAlerts.reduce(
     (message, { nickname, address }) => {
