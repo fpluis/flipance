@@ -18,7 +18,7 @@ const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 const allMarketplaceIds = marketplaces.map(({ id }) => id);
 const allEventIds = nftEvents.map(({ id }) => id);
 
-const { MAX_NICKNAME_LENGTH = 50, MAX_OFFER_FLOOR_DIFFERENCE = 15 } =
+const { MAX_NICKNAME_LENGTH = 50, MAX_OFFER_FLOOR_DIFFERENCE = 25 } =
   process.env;
 
 const dbName = `flipance-test-${new Date().toISOString().slice(0, 19)}`;

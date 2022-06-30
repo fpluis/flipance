@@ -166,14 +166,14 @@ variable "MAX_NICKNAME_LENGTH" {
 
 variable "MAX_OFFER_FLOOR_DIFFERENCE" {
   type        = string
-  description = "Default max. difference as a percentage between the floor and the offer for all alerts. Example: if you set this variable at 15, alerts by default will only notify if an offer is 85% or more of the current floor for the collection."
-  default     = 15
+  description = "Default max. difference as a percentage between the floor and the offer for all alerts. Example: if you set this variable at 25, alerts by default will only notify if an offer is 85% or more of the current floor for the collection."
+  default     = 25
 }
 
 variable "DEFAULT_USER_ALERT_LIMIT" {
   type        = string
   description = "Default max number of alerts a user can have. Each user in the database has a personal limit, so it can be changed for a specific user by querying the database."
-  default     = 3
+  default     = 5
 }
 
 variable "DEFAULT_SERVER_ALERT_LIMIT" {
