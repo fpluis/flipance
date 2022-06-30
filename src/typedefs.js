@@ -33,6 +33,15 @@
  */
 
 /**
+ * @typedef {"user"|"server"} EmbedTarget - Whether the Discord user receiving
+ * the notification is a user or a server.
+ * @typedef {Object} EmbedExtraParams
+ * @property {Alert} watcher
+ * @property {EmbedTarget} target
+ * @typedef {NFTEvent & EmbedExtraParams} EmbedParams
+ */
+
+/**
  * @typedef {Object} Settings - The alert/user settings object used
  * to filter events depending on type, marketplace, price, etc.
  * @property {Number} id - The settings's id in the database.
