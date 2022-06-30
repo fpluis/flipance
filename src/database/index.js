@@ -23,6 +23,8 @@ const allStandardIds = [{ id: "ERC-721" }, { id: "ERC-1155" }].map(
   ({ id }) => id
 );
 
+const DEFAULT_ALLOWED_EVENT_IDS = ["offer", "acceptOffer", "acceptAsk"];
+
 const {
   DB_HOSTNAME,
   DB_PORT,
@@ -487,7 +489,7 @@ const toSettingsObject = (settings) => {
         : allowed_marketplaces.map(deserializeMarketplace),
     allowedEvents:
       allowed_events == null
-        ? allEventIds
+        ? DEFAULT_ALLOWED_EVENT_IDS
         : allowed_events.map(deserializeEventType),
   };
 };
@@ -568,7 +570,7 @@ const toAlertObject = (alert) => {
     allowedEvents:
       alert_allowed_events == null
         ? user_allowed_events == null
-          ? allEventIds
+          ? DEFAULT_ALLOWED_EVENT_IDS
           : user_allowed_events.map(deserializeEventType)
         : alert_allowed_events.map(deserializeEventType),
   };

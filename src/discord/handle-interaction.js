@@ -25,16 +25,30 @@ dotenv.config({ path: path.resolve(".env") });
 const { MAX_NICKNAME_LENGTH = 50, MARKETPLACES } = process.env;
 
 const allMarketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
-const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
+const allNftEvents = JSON.parse(readFileSync("data/nft-events.json"));
 
 const allMarketplaceIds = allMarketplaces.map(({ id }) => id);
-const allEventIds = nftEvents.map(({ id }) => id);
 
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 const marketplaces = allMarketplaces.filter(({ id }) =>
   allowedMarketplaceIds.includes(id)
 );
+const isLooksRareOnly =
+  allowedMarketplaceIds.length === 1 &&
+  allowedMarketplaceIds.includes("looksRare");
+
+if (isLooksRareOnly === true) {
+  logMessage({ message: "Starting in LR-only mode" });
+}
+
+const nftEvents = isLooksRareOnly
+  ? allNftEvents.filter(
+      ({ id }) => !["createAuction", "settleAuction"].includes(id)
+    )
+  : allNftEvents;
+
+const DEFAULT_ALLOWED_EVENT_IDS = ["offer", "acceptOffer", "acceptAsk"];
 
 /* Check the address is a valid Ethereum address */
 const isValidAddress = (address) => {
@@ -759,7 +773,7 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
   });
   const { object: settings } = await getSettings(dbClient, interaction);
   const { allowedEvents } = settings || {
-    allowedMarketplaces: allEventIds,
+    allowedMarketplaces: DEFAULT_ALLOWED_EVENT_IDS,
   };
   const alert = interaction.options.getString("alert");
   const customId = `allowedevents/${alert}`;
