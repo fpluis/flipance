@@ -31,6 +31,10 @@ const allMarketplaceIds = allMarketplaces.map(({ id }) => id);
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
+const isLooksRareOnly =
+  allowedMarketplaceIds.length === 1 &&
+  allowedMarketplaceIds.includes("looksRare");
+
 const argv = minimist(process.argv.slice(2));
 
 const rawCommands = [
@@ -179,7 +183,12 @@ if (allowedMarketplaceIds.length > 1) {
   );
 }
 
-const commands = rawCommands.map((command) => command.toJSON());
+const allCommands = rawCommands.map((command) => command.toJSON());
+const commands = isLooksRareOnly
+  ? allCommands.filter(
+      ({ name }) => !["serveralert", "collectionalert"].includes(name)
+    )
+  : allCommands;
 
 const rest = new REST({ version: "9" }).setToken(
   argv.test ? DISCORD_BOT_TOKEN_TEST : DISCORD_BOT_TOKEN
