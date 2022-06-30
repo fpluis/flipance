@@ -313,8 +313,9 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
   );
   if (userAlerts.length === 0 && guildAlerts.length === 0) {
     return interaction.editReply({
-      content:
-        "You haven't set up any wallet nor collection alerts yet. To create a wallet alert, use the /walletalert command with the wallet address you want to watch. To create a collection alert, use the /collectionalert with the with the collection address you want to watch.",
+      content: isLooksRareOnly
+        ? "You haven't set up any alerts yet.\nTo create a wallet alert, use the /walletalert command with the wallet address you want to watch."
+        : "You haven't set up any wallet nor collection alerts yet.\nTo create a wallet alert, use the /walletalert command with the wallet address you want to watch. To create a collection alert, use the /collectionalert with the with the collection address you want to watch.",
       ephemeral: true,
     });
   }
@@ -334,17 +335,17 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
     },
     ""
   );
-  let content;
-  if (userAlerts.length === 0) {
-    content = `You haven't set up any wallet alerts.\n\n These are the server's alerts:${collectionAlertList}.`;
-  } else if (guildAlerts.length === 0) {
-    content = `These are your personal alerts:${personalAlertList}.\n\nThere are no server alerts.`;
-  } else {
-    content = `These are your personal alerts:${personalAlertList}.\n\nThese are the server's collection alerts:${collectionAlertList}.`;
-  }
-
+  const personalAlertString =
+    userAlerts.length === 0
+      ? `You haven't set up any wallet alerts.`
+      : `These are your alerts:${personalAlertList}.`;
+  const serverAlertString = isLooksRareOnly
+    ? ""
+    : guildAlerts.length === 0
+    ? `\n\nThere are no server alerts.`
+    : `\n\nThese are the server's collection alerts:${collectionAlertList}.`;
   return interaction.editReply({
-    content,
+    content: `${personalAlertString}${serverAlertString}`,
     ephemeral: true,
   });
 };
@@ -629,7 +630,7 @@ const describeSettings = ({
   }
 
   return `Account settings:\n\n${
-    alertLimit ? `**Wallet alert limit**: ${alertLimit}.\n\n` : ""
+    alertLimit ? `**Alert limit**: ${alertLimit}.\n\n` : ""
   }${commonSettings}`;
 };
 
