@@ -42,11 +42,13 @@ if (isLooksRareOnly === true) {
   logMessage({ message: "Starting in LR-only mode" });
 }
 
-const nftEvents = isLooksRareOnly
-  ? allNftEvents.filter(
-      ({ id }) => !["createAuction", "settleAuction"].includes(id)
-    )
-  : allNftEvents;
+const nftEvents = allowedMarketplaceIds.some((id) =>
+  ["foundation"].includes(id)
+)
+  ? allNftEvents
+  : allNftEvents.filter(
+      ({ id }) => !["placeBid", "createAuction", "settleAuction"].includes(id)
+    );
 
 const DEFAULT_ALLOWED_EVENT_IDS = ["offer", "acceptOffer", "acceptAsk"];
 
