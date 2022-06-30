@@ -133,8 +133,8 @@ const describeOffer = ({
   }
 
   return {
-    title: "New offer!",
-    description: `${subject} made a ${priceDescription} ${offerDescription} at ${marketplace}!${
+    title: "New offer",
+    description: `${subject} made a ${priceDescription} ${offerDescription} at ${marketplace}${
       marketplaceId === "looksRare"
         ? "\n\nThe seller will also earn $LOOKS by accepting the offer."
         : ""
@@ -222,7 +222,7 @@ const describeAcceptOffer = (args) => {
   }
 
   return {
-    title: "Offer accepted!",
+    title: "Offer accepted",
     description,
   };
 };
@@ -266,7 +266,7 @@ const describeAcceptAsk = (args) => {
   }
 
   return {
-    title: "New Sale!",
+    title: "New Sale",
     description,
   };
 };
@@ -291,7 +291,7 @@ const describeCreateAuction = (args) => {
           initiator
         )}](https://etherscan.io/address/${initiator})`;
   return {
-    title: "New Auction Created!",
+    title: "New Auction Created",
     description: `${subject} created an auction with reserve price ${priceDescription} at ${marketplace}.`,
   };
 };
@@ -326,7 +326,7 @@ const describeSettleAuction = (args) => {
   }
 
   return {
-    title: "Auction sold!",
+    title: "Auction sold",
     description,
   };
 };
@@ -359,8 +359,8 @@ const describeAuctionBid = ({
   }
 
   return {
-    title: "New auction bid!",
-    description: `${subject} placed a ${priceDescription} ${bidDescription} at ${marketplace}!`,
+    title: "New auction bid",
+    description: `${subject} placed a ${priceDescription} ${bidDescription} at ${marketplace}`,
   };
 };
 
@@ -391,7 +391,7 @@ const describeListing = (args) => {
           seller
         )}](https://etherscan.io/address/${seller})`;
   return {
-    title: "New Listing!",
+    title: "New Listing",
     description: `${subject} listed ${collectionDescription} #${tokenId} for ${priceDescription} at ${marketplace}`,
   };
 };
@@ -632,14 +632,16 @@ export default async (params) => {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
   const assetFolder = join(__dirname, "/../../assets");
+  const imageName = `${embed.title.replace(/\s/giu, "_")}.png`;
   if (
     ["offer", "acceptOffer", "settleAuction", "cancelOrder"].includes(eventType)
   ) {
-    thumbnail = new MessageAttachment(`${assetFolder}/weth.png`, "weth.png");
+    thumbnail = new MessageAttachment(`${assetFolder}/weth.png`, imageName);
   } else {
-    thumbnail = new MessageAttachment(`${assetFolder}/eth.png`, "eth.png");
+    thumbnail = new MessageAttachment(`${assetFolder}/eth.png`, imageName);
   }
 
+  thumbnail.setDescription(embed.title);
   embed.thumbnail = {
     url: `attachment://${thumbnail.name}`,
   };
