@@ -1,5 +1,7 @@
-/* eslint-disable max-len */
 /* eslint-disable no-await-in-loop */
+
+/// <reference path="../typedefs.js" />
+
 import { readFileSync } from "fs";
 import path from "path";
 import dotenv from "dotenv";
@@ -54,9 +56,6 @@ const ALLOWED_MARKETPLACE_IDS =
  * @return {EventEmitter}
  */
 export default (ethProvider, collections = []) => {
-  // Last N speeds in requests/ms to fetch LR events, used to calculate
-  // the current speed and rate-limit floors/top offer polling.
-  // const eventRequestSpeeds = [0.01];
   let blockCache = {};
   let polling = false;
   let collectionsToPoll = collections;
@@ -858,7 +857,7 @@ export default (ethProvider, collections = []) => {
 
   /**
    * Generic poll function for the LR API.
-   * @param {Array[String]} collections - The collection addresses
+   * @param {String[]} collections - The collection addresses
    * @param {Function} call - The function that fetches the endpoint and
    * returns a result.
    * @param {Function} handleResponse - The function that handles the response
@@ -903,7 +902,7 @@ export default (ethProvider, collections = []) => {
 
   /**
    * Retrieves the floor listings for the collections where at least one user owns an NFT.
-   * @param {Array[String]} collections - The collection addresses
+   * @param {String[]} collections - The collection addresses
    */
   const pollLRFloors = async (collections) => {
     const handleResponse = async (collection, listings) => {
@@ -957,7 +956,7 @@ export default (ethProvider, collections = []) => {
    * (the highest offer will be the first in the returned array). See
    * https://looksrare.github.io/api-docs/#/Orders/OrderController.getOrders
    * for reference.
-   * @param {Array[String]} collections - The collection addresses
+   * @param {String[]} collections - The collection addresses
    */
   const pollLRCollectionOffers = (collections) => {
     const handleResponse = async (collection, offers) => {
@@ -1032,16 +1031,15 @@ export default (ethProvider, collections = []) => {
     }
   };
 
+  /**
+   * Handle a LooksRare event.
+   * @param {LREvent} event - LooksRare event.
+   */
   const handleLREvent = (event) => {
-    const { from, hash, type, order, createdAt, token } = event;
-    const {
-      price,
-      endTime,
-      signer,
-      collectionAddress: collection,
-      status,
-      hash: orderHash,
-    } = order;
+    const { from, hash, type, order, createdAt, token, collection } = event;
+    const { address: collectionAddress, type: standard = "ERC-721" } =
+      collection;
+    const { price, endTime, signer, status, hash: orderHash } = order;
     const endsAt = new Date(endTime * 1000);
     const eventType = mapLREventType(type);
     if (
@@ -1059,10 +1057,10 @@ export default (ethProvider, collections = []) => {
         price: Number(etherUtils.formatEther(price)),
         startsAt: new Date(createdAt),
         endsAt,
-        collection: collection.toLowerCase(),
+        collection: collectionAddress.toLowerCase(),
         marketplace: "looksRare",
         blockchain: "eth",
-        standard: "ERC-721",
+        standard: standard === "ERC1155" ? "ERC-1155" : "ERC-721",
       };
       if (signer && eventType === "listing") {
         eventProps.seller = signer;
@@ -1096,6 +1094,10 @@ export default (ethProvider, collections = []) => {
     }
   };
 
+  /**
+   * Poll the latest events from LooksRare for any collection.
+   * @param {String[]} lastEventIds - LooksRare event ids fetched during the last poll, used to filter already-retrieved events.
+   */
   const pollLREvents = async (lastEventIds = []) => {
     const pollStarted = new Date();
     const events = await Promise.all([
@@ -1125,10 +1127,17 @@ export default (ethProvider, collections = []) => {
     return Promise.resolve();
   };
 
+  /**
+   * Set for which collections the highest offers and collection floors will be periodically polled from marketplace APIs.
+   * @param {String[]} collections - Blockchain addresses for the collections
+   */
   eventEmitter.setCollectionsToPoll = (collections) => {
     collectionsToPoll = collections;
   };
 
+  /**
+   * Create the on-chain listeners and start polling marketplaces.
+   */
   eventEmitter.start = () => {
     polling = true;
     contracts = [
@@ -1148,6 +1157,9 @@ export default (ethProvider, collections = []) => {
     }
   };
 
+  /**
+   * Destroy the on-chain listeners and stop polling marketplaces.
+   */
   eventEmitter.stop = () => {
     contracts.forEach((contract) => contract.removeAllListeners());
     eventEmitter.removeAllListeners();
