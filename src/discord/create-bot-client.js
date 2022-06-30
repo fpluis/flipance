@@ -22,6 +22,10 @@ const allEventIds = nftEvents.map(({ id }) => id);
 const allowedMarketplaceIds =
   MARKETPLACES == null ? allMarketplaceIds : MARKETPLACES.split(",");
 
+const isLooksRareOnlyMode =
+  allowedMarketplaceIds.length === 1 &&
+  allowedMarketplaceIds.includes("looksRare");
+
 const argv = minimist(process.argv.slice(2));
 
 const minuteDifference = (date1, date2) =>
@@ -112,6 +116,17 @@ const isAllowedByPreferences = (params) => {
       level: "warning",
     });
 
+    return false;
+  }
+
+  if (
+    isLooksRareOnlyMode &&
+    ((eventType === "acceptOffer" && watcherAddress !== buyer) ||
+      (eventType === "acceptAsk" && watcherAddress !== seller) ||
+      (eventType === "offer" && [initiator, buyer].includes(watcherAddress)) ||
+      (["cancelOrder", "listing"].includes(eventType) &&
+        watcherAddress !== initiator))
+  ) {
     return false;
   }
 
