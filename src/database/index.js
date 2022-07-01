@@ -1806,6 +1806,8 @@ export const createDbClient = async ({
       });
   };
 
+  const serializedOfferEvent = serializeEventType("offer");
+
   /**
    *
    * Get all the NFT events after the 'createdAt' Date as well as the alerts currently watching any of the addresses involved.
@@ -1836,12 +1838,17 @@ export const createDbClient = async ({
             ON alert_settings.id = alerts.settings_id\
             LEFT JOIN settings AS user_settings\
             ON user_settings.id = (\
-              SELECT settings_id FROM users WHERE users.id = alerts.user_id)
-          WHERE alerts.address = nft_events.buyer OR alerts.address = nft_events.seller OR alerts.address = nft_events.collection OR alerts.address = nft_events.initiator OR CONCAT(nft_events.collection, '/', nft_events.token_id) = ANY(alerts.tokens)\
+              SELECT settings_id FROM users WHERE users.id = alerts.user_id\
+            )\
+          WHERE alerts.address = nft_events.buyer\
+          OR alerts.address = nft_events.seller\
+          OR alerts.address = nft_events.collection\
+          OR alerts.address = nft_events.initiator\
+          OR (nft_events.event_type = $3 AND array_to_string(alerts.tokens, ',') LIKE ('%' || nft_events.collection || '/%'))\
         ) alerts ON true\
         WHERE nft_events.created_at >= $1 AND nft_events.id > $2\
         ORDER BY created_at DESC`,
-        [createdAt, minId]
+        [createdAt, minId, serializedOfferEvent]
       )
       .then(({ rows }) => {
         return { result: "success", objects: rows.map(toNFTEventObject) };
