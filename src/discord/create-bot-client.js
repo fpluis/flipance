@@ -44,7 +44,7 @@ const {
  * @return {Boolean}
  */
 const hasAffectedToken = (event, tokens) => {
-  const { collection, tokenId, standard } = event;
+  const { collection, tokenId, standard, eventType } = event;
   if (tokenId == null) {
     return tokens.some((token) => {
       const [alertCollection] = token.split("/");
@@ -54,7 +54,7 @@ const hasAffectedToken = (event, tokens) => {
 
   // Filter out ERC-1155s as false positives since different tokens
   // share the same id
-  return standard === "ERC-1155"
+  return standard === "ERC-1155" && eventType !== "offer"
     ? false
     : tokens.includes(`${collection}/${tokenId}`);
 };
@@ -234,6 +234,14 @@ export default ({ dbClient, shardId, totalShards }) => {
               error,
             });
           }
+        } else {
+          logMessage({
+            message: "Event filtered by preferences",
+            event,
+            watcher,
+            maxEventAge,
+            level: "info",
+          });
         }
       });
 
