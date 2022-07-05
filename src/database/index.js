@@ -475,22 +475,39 @@ const toSettingsObject = (settings) => {
     max_offer_floor_difference,
     allowed_marketplaces,
     allowed_events,
+    alert_max_offer_floor_difference,
+    alert_allowed_marketplaces,
+    alert_allowed_events,
+    user_max_offer_floor_difference,
+    user_allowed_marketplaces,
+    user_allowed_events,
     ...props
   } = settings;
+  const alertMaxOfferFloorDifference =
+    alert_max_offer_floor_difference || max_offer_floor_difference;
+  const alertAllowedMarketplaces =
+    alert_allowed_marketplaces || allowed_marketplaces;
+  const alertAllowedEvents = alert_allowed_events || allowed_events;
   return {
     ...props,
     maxOfferFloorDifference:
-      max_offer_floor_difference == null
-        ? Number(MAX_OFFER_FLOOR_DIFFERENCE)
-        : max_offer_floor_difference,
+      alertMaxOfferFloorDifference == null
+        ? user_max_offer_floor_difference == null
+          ? Number(MAX_OFFER_FLOOR_DIFFERENCE)
+          : user_max_offer_floor_difference
+        : alertMaxOfferFloorDifference,
     allowedMarketplaces:
-      allowed_marketplaces == null
-        ? allMarketplaceIds
-        : allowed_marketplaces.map(deserializeMarketplace),
+      alertAllowedMarketplaces == null
+        ? user_allowed_marketplaces == null
+          ? allMarketplaceIds
+          : user_allowed_marketplaces.map(deserializeMarketplace)
+        : alertAllowedMarketplaces.map(deserializeMarketplace),
     allowedEvents:
-      allowed_events == null
-        ? DEFAULT_ALLOWED_EVENT_IDS
-        : allowed_events.map(deserializeEventType),
+      alertAllowedEvents == null
+        ? user_allowed_events == null
+          ? DEFAULT_ALLOWED_EVENT_IDS
+          : user_allowed_events.map(deserializeEventType)
+        : alertAllowedEvents.map(deserializeEventType),
   };
 };
 
@@ -1240,7 +1257,16 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `UPDATE settings SET max_offer_floor_difference = $2 WHERE ${condition} RETURNING *`,
+        `WITH alert_settings AS (
+          UPDATE settings
+          SET max_offer_floor_difference = $2
+          WHERE ${condition}
+          RETURNING *
+        )
+        SELECT *, ${alertSettingsSelectProps} FROM alert_settings\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.discord_id = $1)`,
         values
       )
       .then(({ rows }) => {
@@ -1310,7 +1336,16 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `UPDATE settings SET allowed_events = $2 WHERE ${condition} RETURNING *`,
+        `WITH alert_settings AS (
+          UPDATE settings
+          SET allowed_events = $2
+          WHERE ${condition}
+          RETURNING *
+        )
+        SELECT *, ${alertSettingsSelectProps} FROM alert_settings\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.discord_id = $1)`,
         values
       )
       .then(({ rows }) => {
@@ -1378,7 +1413,16 @@ export const createDbClient = async ({
 
     return client
       .query(
-        `UPDATE settings SET allowed_marketplaces = $2 WHERE ${condition} RETURNING *`,
+        `WITH alert_settings AS (
+          UPDATE settings
+          SET allowed_marketplaces = $2
+          WHERE ${condition}
+          RETURNING *
+        )
+        SELECT *, ${alertSettingsSelectProps} FROM alert_settings\
+        LEFT JOIN settings AS user_settings\
+        ON user_settings.id = (\
+          SELECT settings_id FROM users WHERE users.discord_id = $1)`,
         values
       )
       .then(({ rows }) => {
