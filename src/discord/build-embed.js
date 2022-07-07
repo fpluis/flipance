@@ -21,11 +21,24 @@ const looksRareBaseDomain =
     ? "https://looksrare.org"
     : "https://rinkeby.looksrare.org";
 
+const toLooksRareEventType = (eventType) => {
+  switch (eventType) {
+    case "listing":
+      return "createListing";
+    case "offer":
+      return "receiveOffer";
+    default:
+      return eventType;
+  }
+};
+
 /* Turns a marketplace id to an embedded link in Markdown */
-const marketplaceIdToMdLink = (marketplace) => {
+const marketplaceIdToMdLink = (marketplace, eventType) => {
   switch (marketplace) {
     case "looksRare":
-      return `[LooksRare](${looksRareBaseDomain}/)`;
+      return `[LooksRare](${looksRareBaseDomain}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+        eventType
+      )})`;
     case "rarible":
       return "[Rarible](https://rarible.com/)";
     case "foundation":
@@ -39,15 +52,24 @@ const marketplaceIdToMdLink = (marketplace) => {
 };
 
 /* Generate the item's URL on the marketplace where the event comes from */
-const generateTokenMarketplaceURL = (marketplaceId, collection, tokenId) => {
+const generateTokenMarketplaceURL = (
+  marketplaceId,
+  collection,
+  tokenId,
+  eventType
+) => {
   if (tokenId == null) {
-    return `${looksRareBaseDomain}/collections/${collection}`;
+    return `${looksRareBaseDomain}/collections/${collection}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+      eventType
+    )}`;
   }
 
   switch (marketplaceId) {
     case "looksRare":
     case "foundation":
-      return `${looksRareBaseDomain}/collections/${collection}/${tokenId}`;
+      return `${looksRareBaseDomain}/collections/${collection}/${tokenId}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+        eventType
+      )}`;
     case "rarible":
       return `https://rarible.com/token/${collection}:${tokenId}`;
     case "x2y2":
@@ -91,11 +113,18 @@ export default async (params) => {
     : Promise.resolve({}));
 
   const collectionMetadata = await getCollectionMetadata(collection);
-  const marketplace = marketplaceIdToMdLink(marketplaceId);
-  const collectionUrl = `${looksRareBaseDomain}/collections/${collection}`;
+  const marketplace = marketplaceIdToMdLink(marketplaceId, eventType);
+  const collectionUrl = `${looksRareBaseDomain}/collections/${collection}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+    eventType
+  )}`;
   const embed = {
     color: 0x0099ff,
-    url: generateTokenMarketplaceURL(marketplaceId, collection, tokenId),
+    url: generateTokenMarketplaceURL(
+      marketplaceId,
+      collection,
+      tokenId,
+      eventType
+    ),
     ...describeEvent({
       ...params,
       collectionMetadata,
@@ -126,7 +155,11 @@ export default async (params) => {
     embed.fields.push([
       {
         name: "Collection",
-        value: `[${collectionMetadata.name}](${looksRareBaseDomain}/collections/${collection})`,
+        value: `[${
+          collectionMetadata.name
+        }](${looksRareBaseDomain}/collections/${collection}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+          eventType
+        )})`,
         inline: true,
       },
     ]);
@@ -134,7 +167,9 @@ export default async (params) => {
     embed.fields.push([
       {
         name: "Collection",
-        value: `[${collection}](${looksRareBaseDomain}/collections/${collection})`,
+        value: `[${collection}](${looksRareBaseDomain}/collections/${collection}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+          eventType
+        )})`,
         inline: true,
       },
     ]);
@@ -162,7 +197,9 @@ export default async (params) => {
       name: "Buyer",
       value: `[${makeAddressReadable(
         buyerAddress
-      )}](${looksRareBaseDomain}/accounts/${buyerAddress})`,
+      )}](${looksRareBaseDomain}/accounts/${buyerAddress}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+        eventType
+      )})`,
       inline: true,
     });
   }
@@ -172,7 +209,9 @@ export default async (params) => {
       name: "Seller",
       value: `[${makeAddressReadable(
         sellerAddress
-      )}](${looksRareBaseDomain}/accounts/${sellerAddress})`,
+      )}](${looksRareBaseDomain}/accounts/${sellerAddress}?utm_source=discord&utm_medium=notification&utm_campaign=${toLooksRareEventType(
+        eventType
+      )})`,
       inline: buyerAddress != null,
     });
   }
