@@ -7,6 +7,7 @@ import { handleInteraction, registerCommands, buildEmbed } from "./index.js";
 import logMessage from "../log-message.js";
 import { readFileSync } from "fs";
 import minimist from "minimist";
+import logMetric from "../log-metric.js";
 
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
@@ -219,13 +220,18 @@ export default ({ dbClient, shardId, totalShards }) => {
             const target = await (alertType === "server"
               ? discordClient.channels.fetch(channelId)
               : discordClient.users.fetch(discordId));
-            target.send(embed).catch((error) => {
-              logMessage({
-                message: `Error sending listing notification to ${channelId}/${discordId}`,
-                level: "error",
-                error,
+            target
+              .send(embed)
+              .then(() => {
+                logMetric({ name: "total_alerts_sent" });
+              })
+              .catch((error) => {
+                logMessage({
+                  message: `Error sending listing notification to ${channelId}/${discordId}`,
+                  level: "error",
+                  error,
+                });
               });
-            });
           } catch (error) {
             logMessage({
               message: `Error handling listing`,

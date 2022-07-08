@@ -19,6 +19,7 @@ import {
 } from "discord.js";
 import { bold } from "@discordjs/builders";
 import logMessage from "../log-message.js";
+import logMetric from "../log-metric.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -97,6 +98,7 @@ const handleCollectionAlert = async ({
       type: "user",
       tokens: [],
     });
+    logMetric({ name: "total_users", action: "increment" });
     user = newUser;
   }
 
@@ -213,6 +215,7 @@ const handleServerAlert = async ({ dbClient, discordClient, interaction }) => {
       type: "server",
       tokens: [],
     });
+    logMetric({ name: "total_users", action: "increment" });
     user = newUser;
   }
 
@@ -388,6 +391,7 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
       discordId,
       type: "user",
     });
+    logMetric({ name: "total_users", action: "increment" });
     user = newUser;
   }
 
@@ -425,6 +429,7 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
     tokens: [],
     nickname,
   });
+  logMetric({ name: "total_wallet_alerts", action: "increment" });
   const nicknameDescription = nickname
     ? ` with alert nickname "${nickname}"`
     : "";
@@ -487,6 +492,10 @@ const handleDeleteAlertResponse = async ({
     type === "server" ? `Server alert` : `Personal alert`;
   switch (result) {
     case "success":
+      if (type === "wallet") {
+        logMetric({ name: "total_wallet_alerts", action: "decrement" });
+      }
+
       discordClient.users.cache
         .get(discordId)
         .send(`${alertDescription} ${identifier} successfully removed.`)

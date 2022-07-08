@@ -10,6 +10,7 @@
     "discord-api-types": "^0.30.0",
     "discord.js": "^13.6.0",
     "ethers": "^5.5.3",
+    "hot-shots": "^9.1.0",
     "minimist": "^1.2.6",
     "moralis": "^1.5.9",
     "node-fetch": "^3.2.3",
