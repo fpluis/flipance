@@ -5,13 +5,18 @@ import logMessage from "./log-message.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
-const { ETHEREUM_NETWORK = "homestead", SHARD_ID = 0 } = process.env;
+const {
+  ETHEREUM_NETWORK = "homestead",
+  SHARD_ID = 0,
+  STATSD_METRIC_PREFIX = "flipance.",
+} = process.env;
 
 const errorHandler = (error) => {
   logMessage({ message: "Error logging StatsD metric", level: "error", error });
 };
 
 const statsDClient = new createStatsDClient({
+  prefix: STATSD_METRIC_PREFIX,
   port: 8125,
   globalTags: {
     network: ETHEREUM_NETWORK,
