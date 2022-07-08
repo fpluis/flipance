@@ -258,12 +258,24 @@ const handleServerAlert = async ({ dbClient, discordClient, interaction }) => {
     : "";
   switch (result) {
     case "success":
-      return discordClient.users.cache
+      discordClient.users.cache
         .get(userDiscordId)
         .send(
           `Server notifications for "${address}"${nicknameDescription} enabled.`
         )
-        .then(() => {
+        .catch((error) => {
+          logMessage({
+            message: `Can't send message to user ${userDiscordId}`,
+            error,
+            level: "warning",
+          });
+        });
+      return interaction
+        .editReply({
+          content: `Server alert successfully created for address ${address}${nicknameDescription}`,
+          ephemeral: true,
+        })
+        .catch(() => {
           interaction.editReply({
             content: `Server alert successfully created for address ${address}${nicknameDescription}`,
             ephemeral: true,
@@ -475,9 +487,16 @@ const handleDeleteAlertResponse = async ({
     type === "server" ? `Server alert` : `Personal alert`;
   switch (result) {
     case "success":
-      await discordClient.users.cache
+      discordClient.users.cache
         .get(discordId)
-        .send(`${alertDescription} ${identifier} successfully removed.`);
+        .send(`${alertDescription} ${identifier} successfully removed.`)
+        .catch((error) => {
+          logMessage({
+            message: `Can't send message to user ${discordId}`,
+            error,
+            level: "warning",
+          });
+        });
       return interaction.editReply({
         content: `${alertDescription} ${identifier} successfully removed.`,
         ephemeral: true,
