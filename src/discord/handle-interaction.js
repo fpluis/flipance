@@ -19,7 +19,7 @@ import {
 } from "discord.js";
 import { bold } from "@discordjs/builders";
 import logMessage from "../log-message.js";
-import logMetric from "../log-metric.js";
+import logEvent from "../log-event.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -84,7 +84,8 @@ const handleCollectionAlert = async ({
   interaction,
 }) => {
   const {
-    user: { id: discordId },
+    guildId: serverId,
+    user: { id: discordId, username },
   } = interaction;
   await interaction.deferReply({
     content: "Creating your alert...",
@@ -98,7 +99,7 @@ const handleCollectionAlert = async ({
       type: "user",
       tokens: [],
     });
-    logMetric({ name: "total_users", action: "increment" });
+    logEvent({ title: "new_user", tags: { serverId, discordId, username } });
     user = newUser;
   }
 
@@ -191,7 +192,7 @@ const handleCollectionAlert = async ({
 const handleServerAlert = async ({ dbClient, discordClient, interaction }) => {
   const {
     guildId: discordId,
-    user: { id: userDiscordId },
+    user: { id: userDiscordId, username },
     channelId,
     memberPermissions,
   } = interaction;
@@ -215,7 +216,10 @@ const handleServerAlert = async ({ dbClient, discordClient, interaction }) => {
       type: "server",
       tokens: [],
     });
-    logMetric({ name: "total_users", action: "increment" });
+    logEvent({
+      title: "new_user",
+      tags: { serverId: discordId, discordId, username },
+    });
     user = newUser;
   }
 
@@ -378,7 +382,8 @@ const handleListAlerts = async ({ dbClient, interaction }) => {
  */
 const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
   const {
-    user: { id: discordId },
+    guildId: serverId,
+    user: { id: discordId, username },
   } = interaction;
   await interaction.deferReply({
     content: "Creating your alert...",
@@ -391,7 +396,7 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
       discordId,
       type: "user",
     });
-    logMetric({ name: "total_users", action: "increment" });
+    logEvent({ title: "new_user", tags: { serverId, discordId, username } });
     user = newUser;
   }
 
@@ -429,7 +434,10 @@ const handleWalletAlert = async ({ dbClient, discordClient, interaction }) => {
     tokens: [],
     nickname,
   });
-  logMetric({ name: "total_wallet_alerts", action: "increment" });
+  logEvent({
+    title: "create_wallet_alert",
+    tags: { serverId, discordId, username, address, nickname },
+  });
   const nicknameDescription = nickname
     ? ` with alert nickname "${nickname}"`
     : "";
@@ -481,7 +489,8 @@ const handleDeleteAlertResponse = async ({
   alert,
 }) => {
   const {
-    user: { id: discordId },
+    guildId: serverId,
+    user: { id: discordId, username },
   } = interaction;
   const { type } = alert || {};
   const identifier =
@@ -493,7 +502,10 @@ const handleDeleteAlertResponse = async ({
   switch (result) {
     case "success":
       if (type === "wallet") {
-        logMetric({ name: "total_wallet_alerts", action: "decrement" });
+        logEvent({
+          title: "delete_wallet_alert",
+          tags: { serverId, discordId, username, address, nickname },
+        });
       }
 
       discordClient.users.cache
@@ -843,11 +855,30 @@ const handleSetAllowedEvents = async ({ dbClient, interaction }) => {
 };
 
 /*
- * Helper function that replies to the user interaction depending on the result
-after attempting a database query.
+ * Reply to the user interaction with a database query result.
  */
-const handleUpdatePreferencesResponse = async (interaction, result, object) => {
+const handleUpdatePreferencesResponse = async ({
+  interaction,
+  result,
+  action,
+  object,
+}) => {
   if (result === "success") {
+    const {
+      guildId: serverId,
+      user: { id: discordId, username },
+    } = interaction;
+    logEvent({
+      title: action,
+      tags: {
+        ...object,
+        allowed_events:
+          object.allowedEvents == null ? [] : object.allowedEvents.join(";"),
+        discordId,
+        serverId,
+        username,
+      },
+    });
     return interaction.editReply({
       content: `Your preferences have been saved. Note that you might still see events we had already queued up for you.\n\n${describeSettings(
         object
@@ -921,10 +952,15 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(interaction, result, {
-    ...object,
-    address,
-    nickname,
+  return handleUpdatePreferencesResponse({
+    interaction,
+    result,
+    action: "set_max_offer_floor_difference",
+    object: {
+      ...object,
+      address,
+      nickname,
+    },
   });
 };
 
@@ -938,7 +974,7 @@ const handleSetMaxOfferFloorDifference = async ({ dbClient, interaction }) => {
 const handleSetNickname = async ({ dbClient, interaction }) => {
   const {
     guildId,
-    user: { id: discordId },
+    user: { id: discordId, username },
     memberPermissions,
   } = interaction;
   const nickname = interaction.options.getString("nickname");
@@ -982,6 +1018,11 @@ const handleSetNickname = async ({ dbClient, interaction }) => {
       return { result, object };
     });
   if (result === "success") {
+    logEvent({
+      title: "set_nickname",
+      tags: { serverId: guildId, discordId, username, address, nickname },
+    });
+
     return interaction.editReply({
       content: `Your preferences have been saved. Your new nickname for the alert with address ${address} is now ${nickname}.\n\n${describeSettings(
         object
@@ -1132,10 +1173,15 @@ const handleAllowedMarketplacesPick = async ({
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(interaction, result, {
-    ...object,
-    address,
-    nickname,
+  return handleUpdatePreferencesResponse({
+    interaction,
+    result,
+    action: "set_allowed_marketplaces",
+    object: {
+      ...object,
+      address,
+      nickname,
+    },
   });
 };
 
@@ -1182,10 +1228,15 @@ const handleAllowedEventsPick = async ({ dbClient, interaction, alert }) => {
 
       return { result, object };
     });
-  return handleUpdatePreferencesResponse(interaction, result, {
-    ...object,
-    address,
-    nickname,
+  return handleUpdatePreferencesResponse({
+    interaction,
+    result,
+    action: "set_allowed_events",
+    object: {
+      ...object,
+      address,
+      nickname,
+    },
   });
 };
 

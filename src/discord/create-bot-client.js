@@ -7,7 +7,7 @@ import { handleInteraction, registerCommands, buildEmbed } from "./index.js";
 import logMessage from "../log-message.js";
 import { readFileSync } from "fs";
 import minimist from "minimist";
-import logMetric from "../log-metric.js";
+import logEvent from "../log-event.js";
 
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
@@ -223,7 +223,15 @@ export default ({ dbClient, shardId, totalShards }) => {
             target
               .send(embed)
               .then(() => {
-                logMetric({ name: "total_alerts_sent" });
+                logEvent({
+                  title: "alert_sent",
+                  tags: {
+                    alertType,
+                    discordId,
+                    channelId,
+                    ...event,
+                  },
+                });
               })
               .catch((error) => {
                 logMessage({
@@ -246,7 +254,7 @@ export default ({ dbClient, shardId, totalShards }) => {
             event,
             watcher,
             maxEventAge,
-            level: "info",
+            level: "warning",
           });
         }
       });
