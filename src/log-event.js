@@ -2,6 +2,7 @@ import path from "path";
 import dotenv from "dotenv";
 import createStatsDClient from "hot-shots";
 import logMessage from "./log-message.js";
+import logMetric from "./log-metric.js";
 
 dotenv.config({ path: path.resolve(".env") });
 
@@ -33,7 +34,12 @@ const statsDClient = new createStatsDClient({
  * @param {String} params.description
  * @param {Object} params.tags
  */
-export default ({ title, description = title, tags = { app: "shard" } }) => {
+export default ({
+  title,
+  description = title,
+  tags = { app: "shard" },
+  aggregationKey,
+}) => {
   const validTags = Object.entries(tags).reduce(
     (obj, [tag, value]) => {
       if (["string", "number"].includes(typeof value)) {
@@ -46,13 +52,33 @@ export default ({ title, description = title, tags = { app: "shard" } }) => {
   );
   logMessage({
     message: "Log event",
-    validTags,
-    tags,
+    title,
+    tags: validTags,
   });
   statsDClient.event(
     title,
     description,
-    { date_happened: new Date(), alert_type: "info" },
+    {
+      date_happened: new Date(),
+      alert_type: "info",
+      source_type_name: "flipance",
+      aggregation_key: aggregationKey,
+    },
     validTags
   );
+  switch (title) {
+    case "new_user":
+      logMetric({ name: "total_users", action: "increment" });
+      break;
+    case "create_wallet_alert":
+      logMetric({ name: "total_wallet_alerts", action: "increment" });
+      break;
+    case "delete_wallet_alert":
+      logMetric({ name: "total_wallet_alerts", action: "decrement" });
+      break;
+    case "alert_sent":
+    default:
+      logMetric({ name: "total_alerts_sent", action: "increment" });
+      break;
+  }
 };
