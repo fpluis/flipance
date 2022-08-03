@@ -8,11 +8,14 @@ import logMessage from "../log-message.js";
 import { readFileSync } from "fs";
 import minimist from "minimist";
 import logEvent from "../log-event.js";
+import logMetric from "../log-metric.js";
+import sleep from "../sleep.js";
 
 dotenv.config({ path: path.resolve(".env") });
 const { MARKETPLACES } = process.env;
 
 const MAX_MINUTE_DIFFERENCE = 10;
+const GAUGE_TOTAL_SERVERS_DELAY = 60 * 1000;
 
 const marketplaces = JSON.parse(readFileSync("data/marketplaces.json"));
 const nftEvents = JSON.parse(readFileSync("data/nft-events.json"));
@@ -262,8 +265,30 @@ export default ({ dbClient, shardId, totalShards }) => {
       return Promise.resolve();
     };
 
+    /**
+     * Set the bot's activity to watch how many servers it is currently in.
+     * @param {Client} discordClient
+     */
+    const setCurrentServers = (discordClient) => {
+      const totalServers = discordClient.guilds.cache.size;
+      logMetric({
+        name: "total_servers",
+        value: totalServers,
+        action: "gauge",
+      });
+    };
+
     discordClient.once("ready", async () => {
       logMessage({ message: `Logged in as ${discordClient.user.tag}` });
+
+      const gaugeTotalServers = async () => {
+        setCurrentServers(discordClient);
+        await sleep(GAUGE_TOTAL_SERVERS_DELAY);
+        return gaugeTotalServers();
+      };
+
+      gaugeTotalServers();
+
       discordClient.on("interactionCreate", (interaction) => {
         handleInteraction({ discordClient, dbClient }, interaction);
       });

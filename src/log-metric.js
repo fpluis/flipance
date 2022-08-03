@@ -35,6 +35,9 @@ const statsDClient = new createStatsDClient({
  */
 export default ({ name, value, action, tags = { app: "shard" } }) => {
   switch (action) {
+    case "gauge":
+      statsDClient.gauge(name, value, 1, tags);
+      break;
     case "decrement":
       statsDClient.decrement(name, value || -1, 1, tags);
       break;
